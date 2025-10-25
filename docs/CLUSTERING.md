@@ -26,15 +26,21 @@
 - 개별 주차 미터 마커 표시
 - 정확한 위치와 요금 정보 확인 가능
 
-### 2. 🎨 색상 코딩
+### 2. 🎨 클러스터 디자인
 
-클러스터의 크기에 따라 다른 색상으로 표시:
+**단색 빨간색 원형:**
 
-| 주차 미터 개수 | 색상      | 의미        |
-| -------------- | --------- | ----------- |
-| 1-49개         | 🔵 파란색 | 소규모 그룹 |
-| 50-99개        | 🟠 주황색 | 중규모 그룹 |
-| 100개 이상     | 🔴 빨간색 | 대규모 그룹 |
+- 모든 클러스터를 일관된 빨간색(`#ef4444`)으로 표시
+- 개수에 따라 원의 크기만 자동 조절
+- 시각적 일관성 및 브랜드 아이덴티티 강화
+
+**가독성 최적화:**
+
+- 아이콘 크기: 80px × 80px
+- 굵은 폰트: 900 weight
+- 흰색 텍스트 (`color: white`)
+- 강한 텍스트 그림자: `2px 2px 4px rgba(0, 0, 0, 0.8)`
+- 강한 박스 그림자: `0 6px 12px rgba(0, 0, 0, 0.4)`
 
 ### 3. 🖱️ 상호작용
 
@@ -45,8 +51,10 @@
 
 #### 마커 클릭
 
-- 팝업으로 주차 정보 표시
+- 지도 중앙으로 부드럽게 이동 (줌 레벨 유지)
+- 팝업으로 주차 정보 즉시 표시
 - 리스트로 자동 스크롤 (선택됨)
+- Google Maps / Apple Maps 링크 제공
 
 #### 호버 효과
 
@@ -70,8 +78,9 @@ const markerClusterGroup = L.markerClusterGroup({
   // クラスター半径 (px)
   maxClusterRadius: 80,
 
-  // スパイダーファイ表示
-  spiderfyOnMaxZoom: true,
+  // スパイダーファイ表示 (물방울 효과 제거)
+  spiderfyOnMaxZoom: false,
+  spiderfyOnEveryZoom: false,
 
   // ホバー時にカバレッジ表示
   showCoverageOnHover: true,
@@ -97,7 +106,39 @@ iconCreateFunction: (cluster) => {
   return L.divIcon({
     html: `<div><span>${count}개</span></div>`,
     className: `marker-cluster ${className}`,
-    iconSize: L.point(40, 40),
+    iconSize: L.point(80, 80), // 크기 증가
+  });
+};
+```
+
+### 가격 표시 마커
+
+```typescript
+const createPriceIcon = (meter: ParkingMeter, day?: number, hour?: number) => {
+  const rate =
+    day !== undefined && hour !== undefined
+      ? getRateByDayAndHour(meter, day, hour)
+      : getCurrentRate(meter);
+  const price = parsePrice(rate);
+
+  // 가격에 따른 색상 설정
+  let bgColor = "#10b981"; // 초록색 (저렴)
+  if (price >= 4) {
+    bgColor = "#ef4444"; // 빨간색 (비쌈)
+  } else if (price >= 3) {
+    bgColor = "#f59e0b"; // 주황색 (중간)
+  }
+
+  return L.divIcon({
+    html: `
+      <div class="price-marker" style="background-color: ${bgColor}">
+        <span>${rate}</span>
+      </div>
+    `,
+    className: "custom-price-marker",
+    iconSize: [50, 30],
+    iconAnchor: [25, 30],
+    popupAnchor: [0, -30],
   });
 };
 ```
@@ -155,31 +196,70 @@ iconCreateFunction: (cluster) => {
 .marker-cluster {
   background-clip: padding-box;
   border-radius: 50%;
-  font-weight: bold;
   text-align: center;
-  color: white;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* 소규모 (파란색) */
-.marker-cluster-small {
-  background-color: rgba(59, 130, 246, 0.6);
+.marker-cluster div {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 22px;
+  font-weight: 900;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
 }
 
-/* 중규모 (주황색) */
-.marker-cluster-medium {
-  background-color: rgba(251, 146, 60, 0.6);
-}
-
-/* 대규모 (빨간색) */
+/* 단색 빨간색 클러스터 (모든 크기) */
+.marker-cluster-small,
+.marker-cluster-medium,
 .marker-cluster-large {
-  background-color: rgba(239, 68, 68, 0.6);
+  background-color: #ef4444;
+}
+
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background-color: #ef4444;
+  color: white;
 }
 
 /* 호버 효과 */
 .marker-cluster:hover {
-  transform: scale(1.1);
+  transform: scale(1.15);
   transition: transform 0.2s ease;
   cursor: pointer;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* 가격 마커 스타일 */
+.custom-price-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.price-marker {
+  padding: 4px 8px;
+  border-radius: 12px;
+  color: white;
+  font-weight: 800;
+  font-size: 13px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  border: 2px solid white;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.price-marker:hover {
+  transform: scale(1.1);
+}
+
+.price-marker span {
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 ```
 
@@ -213,9 +293,20 @@ iconCreateFunction: (cluster) => {
 
 ### Phase 3 (계획)
 
-- [ ] 가격대별 클러스터 색상
 - [ ] 시간대별 클러스터 필터
 - [ ] 커스텀 클러스터 반경 설정
+- [ ] 클러스터 호버 시 미리보기
+
+### 최근 업데이트 (완료)
+
+- ✅ 단색 빨간색 클러스터 디자인
+- ✅ 클러스터 크기 및 가독성 개선 (80px, 굵은 텍스트)
+- ✅ 가시 영역 기반 동적 필터링 (성능 향상)
+- ✅ 마커에 요금 직접 표시 (가격별 색상 구분)
+- ✅ 지도-리스트 자동 동기화 및 스크롤
+- ✅ Google Maps / Apple Maps 내비게이션 연동
+- ✅ 물방울 효과(spiderfy) 제거
+- ✅ 마커 클릭 시 줌 아웃 방지
 
 ## 사용 예시
 

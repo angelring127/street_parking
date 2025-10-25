@@ -65,7 +65,7 @@ interface ParkingMeter {
   "r_su_9a_6p": "$2.50",
   "r_su_6p_10": "$2.00",
   "rate_misc": null,
-  "timeineffe": "METER IN EFFECT: 9:00 AM TO 10:00 PM",
+  "timeineffe": ": 9:00 AM TO 10:00 PM",
   "t_mf_9a_6p": "3 Hr",
   "t_mf_6p_10": "4 Hr",
   "t_sa_9a_6p": "3 Hr",

@@ -1,6 +1,7 @@
 "use client";
 
 import { ParkingMeter } from "@/types/parking";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface TimeRateInfoProps {
   meter: ParkingMeter;
@@ -10,6 +11,7 @@ interface TimeRateInfoProps {
  * 시간대별, 요일별 요금 정보를 상세하게 표시하는 컴포넌트
  */
 export default function TimeRateInfo({ meter }: TimeRateInfoProps) {
+  const { t } = useLanguage();
   const now = new Date();
   const day = now.getDay(); // 0: 일요일, 1-5: 평일, 6: 토요일
   const hour = now.getHours();
@@ -38,42 +40,42 @@ export default function TimeRateInfo({ meter }: TimeRateInfoProps) {
   // 각 시간대/요일의 요금 정보
   const rates = [
     {
-      label: "평일 오전",
+      label: t("timeRate.weekdayMorning"),
       period: "9am-6pm",
       rate: meter.r_mf_9a_6p,
       limit: meter.t_mf_9a_6p,
       isActive: dayType === "weekday" && currentPeriod === "morning",
     },
     {
-      label: "평일 저녁",
+      label: t("timeRate.weekdayEvening"),
       period: "6pm-10pm",
       rate: meter.r_mf_6p_10,
       limit: meter.t_mf_6p_10,
       isActive: dayType === "weekday" && currentPeriod === "evening",
     },
     {
-      label: "토요일 오전",
+      label: t("timeRate.saturdayMorning"),
       period: "9am-6pm",
       rate: meter.r_sa_9a_6p,
       limit: meter.t_sa_9a_6p,
       isActive: dayType === "saturday" && currentPeriod === "morning",
     },
     {
-      label: "토요일 저녁",
+      label: t("timeRate.saturdayEvening"),
       period: "6pm-10pm",
       rate: meter.r_sa_6p_10,
       limit: meter.t_sa_6p_10,
       isActive: dayType === "saturday" && currentPeriod === "evening",
     },
     {
-      label: "일요일 오전",
+      label: t("timeRate.sundayMorning"),
       period: "9am-6pm",
       rate: meter.r_su_9a_6p,
       limit: meter.t_su_9a_6p,
       isActive: dayType === "sunday" && currentPeriod === "morning",
     },
     {
-      label: "일요일 저녁",
+      label: t("timeRate.sundayEvening"),
       period: "6pm-10pm",
       rate: meter.r_su_6p_10,
       limit: meter.t_su_6p_10,
@@ -84,16 +86,16 @@ export default function TimeRateInfo({ meter }: TimeRateInfoProps) {
   return (
     <div className="space-y-3">
       <h4 className="font-semibold text-sm text-gray-700">
-        📋 시간대별 요금표
+        {t("timeRate.title")}
       </h4>
 
       {currentPeriod === "closed" && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
           <p className="text-sm font-medium text-red-700">
-            ⏰ 현재 주차 미터 미운영 시간입니다
+            {t("timeRate.closed")}
           </p>
           <p className="text-xs text-red-600 mt-1">
-            운영 시간: 9:00 AM - 10:00 PM
+            {t("timeRate.operatingHours")}
           </p>
         </div>
       )}
@@ -120,7 +122,7 @@ export default function TimeRateInfo({ meter }: TimeRateInfoProps) {
                   </p>
                   {rate.isActive && (
                     <span className="px-2 py-0.5 bg-green-600 text-white text-xs rounded-full animate-pulse">
-                      현재
+                      {t("timeRate.current")}
                     </span>
                   )}
                 </div>
