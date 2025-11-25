@@ -33,6 +33,7 @@ const translations = {
     "location.unavailable": "위치 정보를 사용할 수 없습니다.",
     "location.timeout": "위치 요청 시간이 초과되었습니다.",
     "location.generalError": "현재 위치를 가져올 수 없습니다.",
+    "location.yourLocation": "내 위치",
 
     // Map/List tabs
     "tabs.map": "지도",
@@ -133,6 +134,7 @@ const translations = {
     "location.unavailable": "Location information is not available.",
     "location.timeout": "Location request timed out.",
     "location.generalError": "Unable to get current location.",
+    "location.yourLocation": "Your Location",
 
     // Map/List tabs
     "tabs.map": "Map",

@@ -19,17 +19,27 @@ interface ParkingMapProps {
   onMeterClick?: (meter: ParkingMeter) => void;
   selectedDay?: number;
   selectedHour?: number;
-  onBoundsChange?: (bounds: any) => void;
+  onBoundsChange?: (bounds: {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  }) => void;
   zoomToMax?: boolean;
+  userLocation?: { lat: number; lon: number };
 }
 
-// 地図中心変更用コンポーネント (selectedMeter変更時のみ)
+// 地図中心変更用コンポーネント (selectedMeter, center, zoom 변경時)
 function ChangeView({
   selectedMeter,
   zoomToMax,
+  center,
+  zoom,
 }: {
   selectedMeter?: ParkingMeter;
   zoomToMax?: boolean;
+  center: [number, number];
+  zoom: number;
 }) {
   const map = useMap();
   const prevSelectedRef = useRef<string | null>(null);
@@ -180,6 +190,24 @@ function ChangeView({
     }
   }, [selectedMeter, map, zoomToMax]);
 
+  // center와 zoom 변경 감지 (내 위치 버튼 등)
+  useEffect(() => {
+    if (
+      center &&
+      center.length === 2 &&
+      !isNaN(center[0]) &&
+      !isNaN(center[1])
+    ) {
+      console.log("ChangeView: Center/zoom changed:", { center, zoom });
+      try {
+        map.setView(center, zoom);
+        console.log("Map center/zoom updated successfully");
+      } catch (error) {
+        console.error("Failed to update map center/zoom:", error);
+      }
+    }
+  }, [center, zoom, map]);
+
   return null;
 }
 
@@ -227,7 +255,12 @@ function MarkerClusterGroup({
   onMeterClick?: (meter: ParkingMeter) => void;
   selectedDay?: number;
   selectedHour?: number;
-  onBoundsChange?: (bounds: any) => void;
+  onBoundsChange?: (bounds: {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  }) => void;
 }) {
   const { t } = useLanguage();
   const map = useMap();
@@ -249,9 +282,12 @@ function MarkerClusterGroup({
         let totalPrice = 0;
         let validPriceCount = 0;
 
-        markers.forEach((marker: any) => {
-          if (marker.options.priceValue !== undefined) {
-            totalPrice += marker.options.priceValue;
+        markers.forEach((marker: L.Marker) => {
+          const priceValue = (
+            marker.options as L.MarkerOptions & { priceValue?: number }
+          ).priceValue;
+          if (priceValue !== undefined) {
+            totalPrice += priceValue;
             validPriceCount++;
           }
         });
@@ -319,7 +355,7 @@ function MarkerClusterGroup({
       const marker = L.marker([meterLat, meterLon], {
         icon: priceIcon,
         priceValue: priceValue,
-      } as any);
+      } as L.MarkerOptions & { priceValue?: number });
 
       // マーカー参照保存
       markerRefs.current.set(meter.meterid, marker);
@@ -441,6 +477,74 @@ function MarkerClusterGroup({
   return null;
 }
 
+// ユーザー位置マーカーコンポーネント
+function UserLocationMarker({
+  userLocation,
+}: {
+  userLocation?: { lat: number; lon: number };
+}) {
+  const map = useMap();
+  const { t } = useLanguage();
+  const markerRef = useRef<L.Marker | null>(null);
+
+  useEffect(() => {
+    if (!userLocation || !map) {
+      // userLocation이 없으면 마커 제거
+      if (markerRef.current) {
+        map.removeLayer(markerRef.current);
+        markerRef.current = null;
+      }
+      return;
+    }
+
+    // ユーザー位置マーカー作成
+    const userIcon = L.divIcon({
+      html: `
+        <div style="
+          width: 20px;
+          height: 20px;
+          background-color: #3b82f6;
+          border: 3px solid white;
+          border-radius: 50%;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        "></div>
+      `,
+      className: "user-location-marker",
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+    });
+
+    // マーカー作成または更新
+    if (markerRef.current) {
+      markerRef.current.setLatLng([userLocation.lat, userLocation.lon]);
+    } else {
+      const marker = L.marker([userLocation.lat, userLocation.lon], {
+        icon: userIcon,
+        zIndexOffset: 1000, // 他のマーカーより上に表示
+      });
+      marker.addTo(map);
+      markerRef.current = marker;
+
+      // ポップアップ設定
+      marker.bindPopup(
+        `<div style="text-align: center; padding: 4px;">
+          <strong>${t("location.yourLocation")}</strong>
+        </div>`
+      );
+    }
+
+    // クリーンアップ
+    return () => {
+      if (markerRef.current) {
+        map.removeLayer(markerRef.current);
+        markerRef.current = null;
+      }
+    };
+  }, [userLocation, map, t]);
+
+  return null;
+}
+
 export default function ParkingMap({
   meters,
   center,
@@ -451,6 +555,7 @@ export default function ParkingMap({
   selectedHour,
   onBoundsChange,
   zoomToMax,
+  userLocation,
 }: ParkingMapProps) {
   const [isMounted, setIsMounted] = useState(false);
 
@@ -473,7 +578,12 @@ export default function ParkingMap({
       style={{ height: "100%", width: "100%" }}
       scrollWheelZoom={true}
     >
-      <ChangeView selectedMeter={selectedMeter} zoomToMax={zoomToMax} />
+      <ChangeView
+        selectedMeter={selectedMeter}
+        zoomToMax={zoomToMax}
+        center={center}
+        zoom={zoom}
+      />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -486,6 +596,7 @@ export default function ParkingMap({
         selectedHour={selectedHour}
         onBoundsChange={onBoundsChange}
       />
+      <UserLocationMarker userLocation={userLocation} />
     </MapContainer>
   );
 }

@@ -145,7 +145,7 @@ export default function Home() {
   };
 
   // 検索機能 (住所オートコンプリートから座標取得)
-  const handleSearch = (lat: number, lon: number, address: string) => {
+  const handleSearch = (lat: number, lon: number, _address: string) => {
     // 좌표 유효성 검사
     if (isNaN(lat) || isNaN(lon)) {
       console.error("Invalid search coordinates:", { lat, lon });
@@ -278,6 +278,22 @@ export default function Home() {
 
   // モバイル用: リストから地図タブに移動
   const handleGoToMap = (meter: ParkingMeter) => {
+    // 좌표 유효성 검사
+    const lat = meter.geo_point_2d.lat;
+    const lon = meter.geo_point_2d.lon;
+
+    if (isNaN(lat) || isNaN(lon) || lat === null || lon === null) {
+      console.error(
+        "Cannot navigate to meter with invalid coordinates:",
+        meter.meterid,
+        { lat, lon }
+      );
+      return;
+    }
+
+    // 지도 중심점을 해당 미터 위치로 설정
+    setMapCenter([lat, lon]);
+    setMapZoom(18); // 최대 줌 레벨로 설정
     setSelectedMeter(meter);
     setViewMode("map");
     setZoomToMax(true); // 최대 줌으로 이동
@@ -338,7 +354,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 検索バー (デスクトップのみ) */}
+      {/* 検索バー (デスクトップ) */}
       <div className="hidden md:block p-2 md:p-4 bg-gray-50">
         <div className="container mx-auto">
           <SearchBar
@@ -346,6 +362,14 @@ export default function Home() {
             onGetCurrentLocation={handleGetCurrentLocation}
           />
         </div>
+      </div>
+
+      {/* モバイル用検索バー (モバイルのみ表示) */}
+      <div className="md:hidden p-2 bg-gray-50 border-b border-gray-200">
+        <SearchBar
+          onSearch={handleSearch}
+          onGetCurrentLocation={handleGetCurrentLocation}
+        />
       </div>
 
       {/* モバイル用タブ (モバイルのみ表示) */}
@@ -409,19 +433,6 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* 주소 검색 섹션 */}
-              <div className="mb-6">
-                <h4 className="text-md font-semibold mb-3 text-gray-700">
-                  <i className="fas fa-search mr-2"></i>
-                  {t("search.title")}
-                </h4>
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                  <SearchBar
-                    onSearch={handleSearch}
-                    onGetCurrentLocation={handleGetCurrentLocation}
-                  />
-                </div>
-              </div>
 
               {/* 필터 섹션 */}
               <div className="mb-4 space-y-4">
@@ -438,9 +449,10 @@ export default function Home() {
                   <select
                     value={selectedDay}
                     onChange={(e) => setSelectedDay(parseInt(e.target.value))}
-                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white appearance-none"
+                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white appearance-none text-gray-900"
                     style={{
                       fontSize: "16px",
+                      color: "#111827", // 진한 회색 텍스트
                       backgroundImage:
                         "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')",
                       backgroundRepeat: "no-repeat",
@@ -467,9 +479,10 @@ export default function Home() {
                   <select
                     value={selectedHour}
                     onChange={(e) => onHourChange(parseInt(e.target.value))}
-                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white appearance-none"
+                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white appearance-none text-gray-900"
                     style={{
                       fontSize: "16px",
+                      color: "#111827", // 진한 회색 텍스트
                       backgroundImage:
                         "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')",
                       backgroundRepeat: "no-repeat",
@@ -529,9 +542,10 @@ export default function Home() {
                     onChange={(e) =>
                       setSortOption(e.target.value as SortOption)
                     }
-                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white appearance-none"
+                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white appearance-none text-gray-900"
                     style={{
                       fontSize: "16px",
+                      color: "#111827", // 진한 회색 텍스트
                       backgroundImage:
                         "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27currentColor%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')",
                       backgroundRepeat: "no-repeat",
@@ -597,6 +611,7 @@ export default function Home() {
                 selectedDay={selectedDay}
                 selectedHour={selectedHour}
                 zoomToMax={zoomToMax}
+                userLocation={userLocation || undefined}
               />
             </div>
           )}
@@ -655,6 +670,7 @@ export default function Home() {
                 selectedDay={selectedDay}
                 selectedHour={selectedHour}
                 zoomToMax={zoomToMax}
+                userLocation={userLocation || undefined}
               />
             </div>
 
