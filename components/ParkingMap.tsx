@@ -49,8 +49,34 @@ interface MarkerGroup {
   representative: ParkingMeter;
 }
 
+interface RoadWay {
+  id: number;
+  highway: string;
+  name: string | null;
+  points: [number, number][];
+}
+
+interface RoadProjection {
+  point: [number, number];
+  distanceMeters: number;
+  segmentIndex: number;
+  segmentRatio: number;
+  distanceAlongMeters: number;
+}
+
+interface RoadMatch {
+  road: RoadWay;
+  projections: RoadProjection[];
+  averageDistance: number;
+  maxDistance: number;
+}
+
 const GROUPING_ZOOM = 16;
 const BLOCK_GAP_METERS = 30;
+const ROAD_FETCH_PADDING_RATIO = 0.15;
+const MAX_ROAD_SNAP_DISTANCE_METERS = 18;
+const MAX_AVERAGE_ROAD_DISTANCE_METERS = 12;
+const EMPTY_ROADS: RoadWay[] = [];
 
 function getRateForMeter(
   meter: ParkingMeter,
@@ -307,49 +333,244 @@ function createGroupedPriceIcon(rate: string, priceValue: number) {
   });
 }
 
-function dedupePoints(points: [number, number][]) {
-  return Array.from(
-    new Map(points.map((point) => [`${point[0]}:${point[1]}`, point])).values()
-  );
+function toProjectedPoint(point: [number, number], origin: [number, number]) {
+  const [lat, lon] = point;
+  const [originLat, originLon] = origin;
+  const metersPerDegreeLat = 111_320;
+  const metersPerDegreeLon =
+    Math.cos((originLat * Math.PI) / 180) * metersPerDegreeLat;
+
+  return {
+    x: (lon - originLon) * metersPerDegreeLon,
+    y: (lat - originLat) * metersPerDegreeLat,
+  };
 }
 
-function getSegmentFromPoints(points: [number, number][]): L.LatLngExpression[] | null {
-  const uniquePoints = dedupePoints(points);
+function fromProjectedPoint(
+  point: { x: number; y: number },
+  origin: [number, number]
+): [number, number] {
+  const [originLat, originLon] = origin;
+  const metersPerDegreeLat = 111_320;
+  const metersPerDegreeLon =
+    Math.cos((originLat * Math.PI) / 180) * metersPerDegreeLat;
 
-  if (uniquePoints.length <= 1) {
+  return [
+    originLat + point.y / metersPerDegreeLat,
+    originLon + point.x / metersPerDegreeLon,
+  ];
+}
+
+function getRoadSegmentLengths(road: RoadWay) {
+  const lengths: number[] = [];
+  const cumulative: number[] = [0];
+
+  for (let index = 0; index < road.points.length - 1; index++) {
+    const pointA = road.points[index];
+    const pointB = road.points[index + 1];
+    const length =
+      calculateDistance(pointA[0], pointA[1], pointB[0], pointB[1]) * 1000;
+
+    lengths.push(length);
+    cumulative.push(cumulative[index] + length);
+  }
+
+  return { lengths, cumulative };
+}
+
+function projectPointToRoad(
+  target: [number, number],
+  road: RoadWay
+): RoadProjection | null {
+  if (road.points.length < 2) {
     return null;
   }
 
-  let maxDistance = -1;
-  let endpoints: [[number, number], [number, number]] | null = null;
+  const origin = target;
+  const projectedTarget = toProjectedPoint(target, origin);
+  const { lengths, cumulative } = getRoadSegmentLengths(road);
+  let bestProjection: RoadProjection | null = null;
 
-  for (let i = 0; i < uniquePoints.length; i++) {
-    for (let j = i + 1; j < uniquePoints.length; j++) {
-      const pointA = uniquePoints[i];
-      const pointB = uniquePoints[j];
-      const distance = calculateDistance(
-        pointA[0],
-        pointA[1],
-        pointB[0],
-        pointB[1]
-      );
+  for (let index = 0; index < road.points.length - 1; index++) {
+    const start = toProjectedPoint(road.points[index], origin);
+    const end = toProjectedPoint(road.points[index + 1], origin);
+    const deltaX = end.x - start.x;
+    const deltaY = end.y - start.y;
+    const segmentLengthSquared = deltaX * deltaX + deltaY * deltaY;
 
-      if (distance > maxDistance) {
-        maxDistance = distance;
-        endpoints = [pointA, pointB];
-      }
+    if (segmentLengthSquared === 0) {
+      continue;
+    }
+
+    const rawRatio =
+      ((projectedTarget.x - start.x) * deltaX +
+        (projectedTarget.y - start.y) * deltaY) /
+      segmentLengthSquared;
+    const segmentRatio = Math.max(0, Math.min(1, rawRatio));
+    const projected = {
+      x: start.x + deltaX * segmentRatio,
+      y: start.y + deltaY * segmentRatio,
+    };
+    const distanceMeters = Math.sqrt(
+      (projectedTarget.x - projected.x) ** 2 +
+        (projectedTarget.y - projected.y) ** 2
+    );
+    const distanceAlongMeters =
+      cumulative[index] + lengths[index] * segmentRatio;
+
+    if (!bestProjection || distanceMeters < bestProjection.distanceMeters) {
+      bestProjection = {
+        point: fromProjectedPoint(projected, origin),
+        distanceMeters,
+        segmentIndex: index,
+        segmentRatio,
+        distanceAlongMeters,
+      };
     }
   }
 
-  return endpoints ? [endpoints[0], endpoints[1]] : null;
+  return bestProjection;
 }
 
-function getGroupedLineSegments(meters: ParkingMeter[]): L.LatLngExpression[][] {
-  const segment = getSegmentFromPoints(
-    meters.map((meter) => [meter.geo_point_2d.lat, meter.geo_point_2d.lon])
+function buildRoadSegmentFromProjections(
+  road: RoadWay,
+  startProjection: RoadProjection,
+  endProjection: RoadProjection
+): [number, number][] {
+  const start =
+    startProjection.distanceAlongMeters <= endProjection.distanceAlongMeters
+      ? startProjection
+      : endProjection;
+  const end = start === startProjection ? endProjection : startProjection;
+  const points: [number, number][] = [start.point];
+
+  for (
+    let index = start.segmentIndex + 1;
+    index <= end.segmentIndex;
+    index++
+  ) {
+    points.push(road.points[index]);
+  }
+
+  points.push(end.point);
+
+  return points.filter((point, index) => {
+    if (index === 0) {
+      return true;
+    }
+
+    const previous = points[index - 1];
+    return previous[0] !== point[0] || previous[1] !== point[1];
+  });
+}
+
+function findBestRoadAlignedSegment(
+  meters: ParkingMeter[],
+  roads: RoadWay[]
+): L.LatLngExpression[] | null {
+  if (meters.length < 2 || roads.length === 0) {
+    return null;
+  }
+
+  const meterPoints = meters.map(
+    (meter) => [meter.geo_point_2d.lat, meter.geo_point_2d.lon] as [
+      number,
+      number,
+    ]
+  );
+  let best: RoadMatch | null = null;
+
+  for (const road of roads) {
+    const projections = meterPoints
+      .map((point) => projectPointToRoad(point, road))
+      .filter(
+        (projection): projection is RoadProjection => projection !== null
+      );
+
+    if (projections.length !== meterPoints.length) {
+      continue;
+    }
+
+    const totalDistance = projections.reduce(
+      (sum, projection) => sum + projection.distanceMeters,
+      0
+    );
+    const averageDistance = totalDistance / projections.length;
+    const maxDistance = Math.max(
+      ...projections.map((projection) => projection.distanceMeters)
+    );
+
+    if (
+      maxDistance > MAX_ROAD_SNAP_DISTANCE_METERS ||
+      averageDistance > MAX_AVERAGE_ROAD_DISTANCE_METERS
+    ) {
+      continue;
+    }
+
+    if (
+      !best ||
+      averageDistance < best.averageDistance ||
+      (averageDistance === best.averageDistance && maxDistance < best.maxDistance)
+    ) {
+      best = {
+        road,
+        projections,
+        averageDistance,
+        maxDistance,
+      };
+    }
+  }
+
+  if (!best) {
+    return null;
+  }
+
+  const orderedProjections = [...best.projections].sort(
+    (a, b) => a.distanceAlongMeters - b.distanceAlongMeters
+  );
+  const segment = buildRoadSegmentFromProjections(
+    best.road,
+    orderedProjections[0],
+    orderedProjections[orderedProjections.length - 1]
   );
 
+  return segment.length > 1 ? segment : null;
+}
+
+function getGroupedLineSegments(
+  meters: ParkingMeter[],
+  roads: RoadWay[]
+): L.LatLngExpression[][] {
+  const segment = findBestRoadAlignedSegment(meters, roads);
+
   return segment ? [segment] : [];
+}
+
+function getPaddedBounds(bounds: L.LatLngBounds) {
+  const south = bounds.getSouth();
+  const west = bounds.getWest();
+  const north = bounds.getNorth();
+  const east = bounds.getEast();
+  const latPadding = (north - south) * ROAD_FETCH_PADDING_RATIO;
+  const lonPadding = (east - west) * ROAD_FETCH_PADDING_RATIO;
+
+  return {
+    south: south - latPadding,
+    west: west - lonPadding,
+    north: north + latPadding,
+    east: east + lonPadding,
+  };
+}
+
+function getRoadBoundsKey(bounds: L.LatLngBounds) {
+  const padded = getPaddedBounds(bounds);
+
+  return [
+    padded.south.toFixed(4),
+    padded.west.toFixed(4),
+    padded.north.toFixed(4),
+    padded.east.toFixed(4),
+  ].join(",");
 }
 
 function parseOperatingHours(timeineffe: string | null) {
@@ -529,19 +750,85 @@ function MarkerClusterGroup({
   const map = useMap();
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
+  const roadCacheRef = useRef<Map<string, RoadWay[]>>(new Map());
   const [currentZoom, setCurrentZoom] = useState(() => map.getZoom());
+  const [roadBoundsKey, setRoadBoundsKey] = useState(() =>
+    getRoadBoundsKey(map.getBounds())
+  );
+  const [fetchedRoadWays, setFetchedRoadWays] =
+    useState<RoadWay[]>(EMPTY_ROADS);
+  const roadWaysForCurrentBounds =
+    currentZoom >= GROUPING_ZOOM ? fetchedRoadWays : EMPTY_ROADS;
 
   useEffect(() => {
-    const handleZoomChange = () => {
-      setCurrentZoom(map.getZoom());
+    const syncMapState = () => {
+      const zoom = map.getZoom();
+      setCurrentZoom(zoom);
+
+      if (zoom >= GROUPING_ZOOM) {
+        setRoadBoundsKey(getRoadBoundsKey(map.getBounds()));
+      }
     };
 
-    map.on("zoomend", handleZoomChange);
+    map.on("moveend", syncMapState);
+    map.on("zoomend", syncMapState);
 
     return () => {
-      map.off("zoomend", handleZoomChange);
+      map.off("moveend", syncMapState);
+      map.off("zoomend", syncMapState);
     };
   }, [map]);
+
+  useEffect(() => {
+    if (currentZoom < GROUPING_ZOOM) {
+      return;
+    }
+
+    const cachedRoads = roadCacheRef.current.get(roadBoundsKey);
+
+    if (cachedRoads) {
+      let isActive = true;
+
+      queueMicrotask(() => {
+        if (isActive) {
+          setFetchedRoadWays(cachedRoads);
+        }
+      });
+
+      return () => {
+        isActive = false;
+      };
+    }
+
+    const controller = new AbortController();
+
+    fetch(`/api/osm-roads?bbox=${roadBoundsKey}`, {
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`OSM roads request failed: ${response.status}`);
+        }
+
+        return response.json() as Promise<{ roads?: RoadWay[] }>;
+      })
+      .then((data) => {
+        const roads = data.roads || [];
+        roadCacheRef.current.set(roadBoundsKey, roads);
+        setFetchedRoadWays(roads);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        console.error("Failed to fetch OSM roads:", error);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [currentZoom, roadBoundsKey]);
 
   useEffect(() => {
     const markerRefsSnapshot = markerRefs.current;
@@ -667,7 +954,10 @@ function MarkerClusterGroup({
       };
 
       if (isGrouped) {
-        const lineSegments = getGroupedLineSegments(group.meters);
+        const lineSegments = getGroupedLineSegments(
+          group.meters,
+          roadWaysForCurrentBounds
+        );
 
         lineSegments.forEach((lineLatLngs) => {
           const line = L.polyline(lineLatLngs, {
@@ -762,7 +1052,17 @@ function MarkerClusterGroup({
       markerRefsSnapshot.clear();
       clusterGroupRef.current = null;
     };
-  }, [map, meters, onMeterClick, selectedDay, selectedHour, onBoundsChange, t, currentZoom]);
+  }, [
+    map,
+    meters,
+    onMeterClick,
+    selectedDay,
+    selectedHour,
+    onBoundsChange,
+    t,
+    currentZoom,
+    roadWaysForCurrentBounds,
+  ]);
 
   useEffect(() => {
     if (!selectedMeter || !clusterGroupRef.current) return;
