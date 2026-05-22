@@ -14,7 +14,6 @@ interface ParkingListProps {
   selectedDay: number;
   selectedHour: number;
   onGoToMap?: (meter: ParkingMeter) => void;
-  scrollToMeter?: (meterId: string) => void;
 }
 
 export default function ParkingList({
@@ -25,7 +24,6 @@ export default function ParkingList({
   selectedDay,
   selectedHour,
   onGoToMap,
-  scrollToMeter,
 }: ParkingListProps) {
   const { t } = useLanguage();
   const [expandedMeterId, setExpandedMeterId] = useState<string | null>(null);
@@ -33,7 +31,6 @@ export default function ParkingList({
   const meterRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // 가상 스크롤링 상태
-  const [visibleStartIndex, setVisibleStartIndex] = useState(0);
   const [visibleEndIndex, setVisibleEndIndex] = useState(20); // 초기 20개 표시
   const ITEMS_PER_PAGE = 20;
 

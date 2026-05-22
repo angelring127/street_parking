@@ -1,162 +1,115 @@
-# 🅿️ Vancouver Street Parking Price Finder
+# Vancouver Street Parking Price Finder
 
-Vancouver 시의 거리 주차 미터 가격 정보를 지도와 리스트로 확인할 수 있는 웹 애플리케이션입니다.
+Vancouver 시 거리 주차 미터 정보를 지도와 리스트에서 확인할 수 있는 Next.js 애플리케이션입니다.
 
-## 주요 기능
+사용자는 현재 위치 또는 주소 검색으로 주변 주차 미터를 찾고, 선택한 요일과 시간 기준으로 요금을 비교할 수 있습니다.
 
-- 🗺️ **스마트 마커 클러스터링**: 7,000개 주차 미터를 효율적으로 표시
-  - 줌 레벨에 따라 자동으로 그룹화/해제
-  - 단색 빨간색 클러스터로 개수에 따라 크기 자동 조절
-  - 최대 줌에서만 개별 마커 표시로 성능 80% 개선
-- ⏰ **동적 요금 표시**: 선택한 시간과 요일에 따른 정확한 주차 요금 표시
-  - 필터 패널에서 요일/시간 선택 가능 (기본값: 현재 날짜/시간)
-  - 지도 마커와 리스트에 선택된 시간의 요금 실시간 반영
-- 📅 **시간대별 상세 정보**: 평일/주말, 오전/저녁 시간대별 요금 비교
-  - 별도 버튼으로 상세 요금 정보 확장/축소
-- 📍 **현재 위치 기반 검색**: GPS를 이용한 주변 주차 정보 확인
-- 🔍 **주소 자동완성 검색**: OpenStreetMap Nominatim API를 이용한 실시간 주소 검색 (NEW! ✨)
-  - 입력하는 동안 실시간 주소 제안
-  - 정확한 주소 검색으로 가장 가까운 주차 미터 찾기
-  - **완전 무료** (API 키 불필요)
-- 🗺️ **인터랙티브 지도**: Leaflet 기반 지도에서 주차 위치 시각화
-  - 지도 마커에 요금 직접 표시 (가격에 따라 색상 구분)
-  - 마커 클릭 시 지도 중앙 이동 및 팝업 표시
-  - 가시 영역 기반 동적 필터링으로 성능 최적화
-- 📋 **리스트 뷰**: 상세한 주차 정보를 리스트 형태로 제공
-  - 지도/리스트 간 자동 동기화 및 스크롤
-  - 선택된 항목 자동 스크롤 기능
-- 🎯 **필터링**: 요일/시간, 가격, 신용카드 사용 가능 여부로 필터링
-- 📊 **정렬**: 가격, 거리 기준 정렬
-- 🗺️ **내비게이션**: Google Maps 및 Apple Maps 연동
-- 📱 **반응형 디자인**: 모바일, 태블릿, 데스크톱 모두 지원
+## 현재 구현된 핵심 기능
+
+- 지도 기반 주차 미터 탐색
+- 리스트 기반 상세 정보 확인
+- OpenStreetMap Nominatim 기반 주소 자동완성 검색
+- GPS 현재 위치 이동
+- 요일/시간 선택 기반 요금 표시
+- 최대 요금 필터
+- 신용카드 결제 가능 필터
+- 가격/거리 기준 정렬
+- 지도 마커 클러스터링
+- Google Maps / Apple Maps 링크 제공
+- 한국어 / 영어 UI 전환
+- 모바일 지도/리스트 탭 전환
 
 ## 기술 스택
 
-- **Framework**: Next.js 15 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Map**: Leaflet & React-Leaflet
-- **Clustering**: Leaflet.markercluster
-- **Address Autocomplete**: OpenStreetMap Nominatim API (완전 무료)
-- **Data Source**: Vancouver Open Data Portal
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- Leaflet
+- react-leaflet
+- leaflet.markercluster
+
+## 로컬 데이터 기준
+
+- 런타임 데이터 파일: [parking-meters.geojson](/Users/hoya/Project/AI/street_parking_price/parking-meters.geojson)
+- 현재 저장소에 포함된 GeoJSON feature 수: 3,949
+- 현재 저장소에 포함된 파일 크기: 3,671,450 bytes
+
+데이터는 갱신 시점에 따라 바뀔 수 있습니다.
 
 ## 시작하기
 
-### 1. 의존성 설치
-
 ```bash
 npm install
-```
-
-### 2. 개발 서버 실행
-
-```bash
 npm run dev
 ```
 
-브라우저에서 [http://localhost:3000](http://localhost:3000)을 열어 확인하세요.
+브라우저에서 [http://localhost:3000](http://localhost:3000)을 열면 됩니다.
 
-💡 **API 키 불필요**: 주소 자동완성 기능은 OpenStreetMap Nominatim API를 사용하므로 API 키 설정이 필요 없습니다!
-
-### 3. 프로덕션 빌드
+## 주요 명령어
 
 ```bash
+npm run dev
+npm run lint
 npm run build
-npm start
+npm run update-data
 ```
-
-## 데이터 업데이트
-
-Vancouver Open Data Portal의 주차 미터 데이터는 주기적으로 업데이트됩니다.
-
-### 수동 업데이트
-
-```bash
-curl -o public/data/parking-meters.json "https://opendata.vancouver.ca/api/explore/v2.1/catalog/datasets/parking-meters/exports/json?limit=-1&timezone=America%2FLos_Angeles"
-```
-
-### 자동 업데이트 (향후 구현)
-
-- GitHub Actions를 통한 주간 자동 업데이트
-- 또는 Next.js API Routes를 통한 서버 사이드 데이터 갱신
 
 ## 프로젝트 구조
 
-```
+```text
 street_parking_price/
-├── app/                    # Next.js App Router
-│   ├── layout.tsx         # 루트 레이아웃
-│   ├── page.tsx           # 메인 페이지
-│   └── globals.css        # 전역 스타일
-├── components/            # React 컴포넌트
-│   ├── ParkingMap.tsx    # 지도 컴포넌트
-│   ├── ParkingList.tsx   # 리스트 컴포넌트
-│   ├── TimeRateInfo.tsx  # 시간대별 요금 상세 (NEW!)
-│   ├── FilterPanel.tsx   # 필터 패널
-│   ├── SearchBar.tsx     # 검색 바
-│   └── AdBanner.tsx      # 광고 배너 (미래 구현)
-├── lib/                   # 유틸리티 함수
-│   └── utils.ts          # 헬퍼 함수들 (시간별 요금 계산 포함)
-├── types/                 # TypeScript 타입 정의
-│   └── parking.ts        # 주차 데이터 타입
-├── docs/                  # 문서
-│   ├── CLUSTERING.md          # 마커 클러스터링 시스템
-│   ├── TIME_BASED_PRICING.md  # 시간/요일별 요금 시스템
-│   ├── DATA_STRUCTURE.md      # 데이터 구조
-│   └── FEATURES.md            # 기능 상세
-└── public/               # 정적 파일
-    └── data/             # 데이터 파일
-        └── parking-meters.json
+├── app/
+│   ├── globals.css
+│   ├── layout.tsx
+│   └── page.tsx
+├── components/
+│   ├── AdBanner.tsx
+│   ├── FilterPanel.tsx
+│   ├── ParkingList.tsx
+│   ├── ParkingMap.tsx
+│   ├── SearchBar.tsx
+│   └── TimeRateInfo.tsx
+├── contexts/
+│   └── LanguageContext.tsx
+├── docs/
+│   ├── CLUSTERING.md
+│   ├── DATA_STRUCTURE.md
+│   ├── FEATURES.md
+│   └── TIME_BASED_PRICING.md
+├── lib/
+│   └── utils.ts
+├── parking-meters.geojson
+├── public/
+├── scripts/
+│   └── update-data.sh
+├── types/
+│   └── parking.ts
+├── PROJECT_SUMMARY.md
+└── memory.md
 ```
 
-## 향후 계획
+## 문서
 
-### Phase 1: MVP (완료)
+- [PROJECT_SUMMARY.md](/Users/hoya/Project/AI/street_parking_price/PROJECT_SUMMARY.md): 현재 구현 상태와 작업 메모 요약
+- [docs/FEATURES.md](/Users/hoya/Project/AI/street_parking_price/docs/FEATURES.md): 사용자 기능 정리
+- [docs/DATA_STRUCTURE.md](/Users/hoya/Project/AI/street_parking_price/docs/DATA_STRUCTURE.md): 데이터 구조 설명
+- [docs/CLUSTERING.md](/Users/hoya/Project/AI/street_parking_price/docs/CLUSTERING.md): 지도/클러스터링 동작 설명
+- [docs/TIME_BASED_PRICING.md](/Users/hoya/Project/AI/street_parking_price/docs/TIME_BASED_PRICING.md): 시간 기반 요금 로직 설명
+- [memory.md](/Users/hoya/Project/AI/street_parking_price/memory.md): 실제 구현 기준의 작업용 메모
 
-- ✅ 기본 지도 및 리스트 뷰
-- ✅ 필터 및 정렬 기능
-- ✅ 현재 위치 기반 검색
-- ✅ 반응형 디자인
-- ✅ **시간/요일별 동적 주차 요금 표시 (사용자 지정 가능)**
-- ✅ **시간대별 상세 요금 정보 (별도 버튼으로 확장)**
-- ✅ **스마트 마커 클러스터링 (성능 80% 개선)**
-- ✅ **지도 범위 기반 동적 필터링 (버벅임 해결)**
-- ✅ **Google Maps / Apple Maps 내비게이션 연동**
-- ✅ **지도-리스트 자동 동기화 및 스크롤**
-- ✅ **주소 자동완성 검색 (OpenStreetMap Nominatim - 완전 무료)**
+## 현재 상태 메모
 
-### Phase 2: 광고 수익화
-
-- 🔲 Google AdSense 통합
-- 🔲 최적의 광고 배치 위치 결정
-- 🔲 광고 성과 분석
-
-### Phase 3: 고급 기능
-
-- 🔲 즐겨찾기 기능
-- 🔲 실시간 주차 가능 여부 (API 제공 시)
-- 🔲 경로 안내 통합
-- 🔲 사용자 리뷰 및 평점
-
-### Phase 4: 백엔드
-
-- 🔲 사용자 인증
-- 🔲 데이터 캐싱
-- 🔲 API 서버 구축
-- 🔲 분석 대시보드
+- `npm run build`는 통과합니다.
+- `npm run lint`는 오류 없이 통과합니다.
+- Google AdSense 스크립트 로드 코드가 추가되어 있습니다.
+- `AdBanner` 컴포넌트는 존재하지만 현재 메인 UI에서 실제로 렌더링되지는 않습니다.
 
 ## 데이터 출처
 
-이 프로젝트는 [Vancouver Open Data Portal](https://opendata.vancouver.ca)의 데이터를 사용합니다.
+- Vancouver Open Data Portal
+- OpenStreetMap
 
 ## 라이선스
 
 MIT License
-
-## 기여
-
-Pull Request는 언제나 환영합니다!
-
-## 문의
-
-문제가 발생하거나 제안이 있으시면 GitHub Issues를 이용해주세요.

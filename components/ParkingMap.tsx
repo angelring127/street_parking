@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -8,7 +8,12 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import "leaflet.markercluster";
 import { ParkingMeter } from "@/types/parking";
-import { getCurrentRate, getRateByDayAndHour, parsePrice } from "@/lib/utils";
+import {
+  calculateDistance,
+  getCurrentRate,
+  getRateByDayAndHour,
+  parsePrice,
+} from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface ParkingMapProps {
@@ -27,9 +32,385 @@ interface ParkingMapProps {
   }) => void;
   zoomToMax?: boolean;
   userLocation?: { lat: number; lon: number };
+  followMyLocation?: boolean;
+  onUserMapDrag?: () => void;
+  onViewportChange?: (view: {
+    center: [number, number];
+    zoom: number;
+  }) => void;
 }
 
-// 地図中心変更用コンポーネント (selectedMeter, center, zoom 변경時)
+interface MarkerGroup {
+  key: string;
+  meters: ParkingMeter[];
+  rate: string;
+  priceValue: number;
+  center: [number, number];
+  representative: ParkingMeter;
+}
+
+const GROUPING_ZOOM = 16;
+const BLOCK_GAP_METERS = 30;
+
+function getRateForMeter(
+  meter: ParkingMeter,
+  selectedDay?: number,
+  selectedHour?: number
+) {
+  if (selectedDay !== undefined && selectedHour !== undefined) {
+    return getRateByDayAndHour(meter, selectedDay, selectedHour);
+  }
+
+  return getCurrentRate(meter);
+}
+
+function getPriceColor(price: number) {
+  if (price >= 4) {
+    return "#ef4444";
+  }
+
+  if (price >= 3) {
+    return "#f59e0b";
+  }
+
+  return "#10b981";
+}
+
+function calculateCentroid(meters: ParkingMeter[]): [number, number] {
+  const sums = meters.reduce(
+    (acc, meter) => {
+      acc.lat += meter.geo_point_2d.lat;
+      acc.lon += meter.geo_point_2d.lon;
+      return acc;
+    },
+    { lat: 0, lon: 0 }
+  );
+
+  return [sums.lat / meters.length, sums.lon / meters.length];
+}
+
+function findRepresentativeMeter(
+  meters: ParkingMeter[],
+  center: [number, number]
+): ParkingMeter {
+  let representative = meters[0];
+  let minDistance = Infinity;
+
+  meters.forEach((meter) => {
+    const distance = calculateDistance(
+      center[0],
+      center[1],
+      meter.geo_point_2d.lat,
+      meter.geo_point_2d.lon
+    );
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      representative = meter;
+    }
+  });
+
+  return representative;
+}
+
+function buildMarkerGroups(
+  meters: ParkingMeter[],
+  selectedDay?: number,
+  selectedHour?: number
+) {
+  const validMeters = meters.filter((meter) => {
+    const lat = meter.geo_point_2d.lat;
+    const lon = meter.geo_point_2d.lon;
+
+    return (
+      !isNaN(lat) &&
+      !isNaN(lon) &&
+      lat !== null &&
+      lon !== null &&
+      isFinite(lat) &&
+      isFinite(lon)
+    );
+  });
+
+  const byGroupKey = new Map<
+    string,
+    Array<{ meter: ParkingMeter; rate: string; priceValue: number }>
+  >();
+
+  validMeters.forEach((meter) => {
+    const rate = getRateForMeter(meter, selectedDay, selectedHour);
+    const priceValue = parsePrice(rate);
+    const sectorKey =
+      typeof meter.sector === "number" ? `sector-${meter.sector}` : "sector-none";
+    const groupKey = `${rate}::${sectorKey}`;
+    const items = byGroupKey.get(groupKey) || [];
+    items.push({ meter, rate, priceValue });
+    byGroupKey.set(groupKey, items);
+  });
+
+  const groups: MarkerGroup[] = [];
+
+  byGroupKey.forEach((items, groupKey) => {
+    const [rate] = groupKey.split("::");
+
+    const byDirection = new Map<
+      string,
+      Array<{ meter: ParkingMeter; rate: string; priceValue: number }>
+    >();
+
+    items.forEach((item) => {
+      const directionKey = item.meter.direction?.trim() || "direction-none";
+      const directionItems = byDirection.get(directionKey) || [];
+      directionItems.push(item);
+      byDirection.set(directionKey, directionItems);
+    });
+
+    byDirection.forEach((directionItems, directionKey) => {
+      const orderedItems = [...directionItems].sort((a, b) => {
+        const direction = directionKey.toLowerCase();
+
+        if (direction === "east" || direction === "west") {
+          return (
+            a.meter.geo_point_2d.lon - b.meter.geo_point_2d.lon ||
+            a.meter.geo_point_2d.lat - b.meter.geo_point_2d.lat
+          );
+        }
+
+        if (direction === "north" || direction === "south") {
+          return (
+            a.meter.geo_point_2d.lat - b.meter.geo_point_2d.lat ||
+            a.meter.geo_point_2d.lon - b.meter.geo_point_2d.lon
+          );
+        }
+
+        const deltaLat = Math.max(
+          ...directionItems.map((item) => item.meter.geo_point_2d.lat)
+        ) - Math.min(...directionItems.map((item) => item.meter.geo_point_2d.lat));
+        const deltaLon = Math.max(
+          ...directionItems.map((item) => item.meter.geo_point_2d.lon)
+        ) - Math.min(...directionItems.map((item) => item.meter.geo_point_2d.lon));
+
+        if (deltaLon >= deltaLat) {
+          return (
+            a.meter.geo_point_2d.lon - b.meter.geo_point_2d.lon ||
+            a.meter.geo_point_2d.lat - b.meter.geo_point_2d.lat
+          );
+        }
+
+        return (
+          a.meter.geo_point_2d.lat - b.meter.geo_point_2d.lat ||
+          a.meter.geo_point_2d.lon - b.meter.geo_point_2d.lon
+        );
+      });
+
+      let currentBlock: typeof orderedItems = [];
+
+      const flushCurrentBlock = () => {
+        if (currentBlock.length === 0) {
+          return;
+        }
+
+        const groupedMeters = currentBlock.map((item) => item.meter);
+        const center = calculateCentroid(groupedMeters);
+        const representative = findRepresentativeMeter(groupedMeters, center);
+        const priceValue = currentBlock[0].priceValue;
+
+        groups.push({
+          key: `${rate}-${directionKey}-${representative.meterid}-${groupedMeters.length}`,
+          meters: groupedMeters,
+          rate,
+          priceValue,
+          center,
+          representative,
+        });
+
+        currentBlock = [];
+      };
+
+      orderedItems.forEach((item, index) => {
+        if (index === 0) {
+          currentBlock.push(item);
+          return;
+        }
+
+        const previous = orderedItems[index - 1];
+        const gapMeters =
+          calculateDistance(
+            previous.meter.geo_point_2d.lat,
+            previous.meter.geo_point_2d.lon,
+            item.meter.geo_point_2d.lat,
+            item.meter.geo_point_2d.lon
+          ) * 1000;
+
+        if (gapMeters > BLOCK_GAP_METERS) {
+          flushCurrentBlock();
+        }
+
+        currentBlock.push(item);
+      });
+
+      flushCurrentBlock();
+    });
+  });
+
+  return groups;
+}
+
+function createPriceIcon(rate: string, priceValue: number) {
+  const bgColor = getPriceColor(priceValue);
+
+  return L.divIcon({
+    html: `
+      <div class="price-marker" style="background-color: ${bgColor}">
+        <span>${rate}</span>
+      </div>
+    `,
+    className: "custom-price-marker",
+    iconSize: [50, 30],
+    iconAnchor: [25, 30],
+    popupAnchor: [0, -30],
+  });
+}
+
+function createGroupedPriceIcon(rate: string, priceValue: number) {
+  const bgColor = getPriceColor(priceValue);
+  const label = rate;
+  const width = Math.max(72, label.length * 9 + 18);
+
+  return L.divIcon({
+    html: `
+      <div
+        style="
+          min-width: ${width}px;
+          height: 32px;
+          padding: 0 12px;
+          border-radius: 9999px;
+          background-color: ${bgColor};
+          color: white;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid white;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+          font-size: 13px;
+          font-weight: 800;
+          white-space: nowrap;
+        "
+      >
+        ${label}
+      </div>
+    `,
+    className: "custom-price-marker grouped-price-marker",
+    iconSize: [width, 32],
+    iconAnchor: [width / 2, 32],
+    popupAnchor: [0, -32],
+  });
+}
+
+function dedupePoints(points: [number, number][]) {
+  return Array.from(
+    new Map(points.map((point) => [`${point[0]}:${point[1]}`, point])).values()
+  );
+}
+
+function getSegmentFromPoints(points: [number, number][]): L.LatLngExpression[] | null {
+  const uniquePoints = dedupePoints(points);
+
+  if (uniquePoints.length <= 1) {
+    return null;
+  }
+
+  let maxDistance = -1;
+  let endpoints: [[number, number], [number, number]] | null = null;
+
+  for (let i = 0; i < uniquePoints.length; i++) {
+    for (let j = i + 1; j < uniquePoints.length; j++) {
+      const pointA = uniquePoints[i];
+      const pointB = uniquePoints[j];
+      const distance = calculateDistance(
+        pointA[0],
+        pointA[1],
+        pointB[0],
+        pointB[1]
+      );
+
+      if (distance > maxDistance) {
+        maxDistance = distance;
+        endpoints = [pointA, pointB];
+      }
+    }
+  }
+
+  return endpoints ? [endpoints[0], endpoints[1]] : null;
+}
+
+function getGroupedLineSegments(meters: ParkingMeter[]): L.LatLngExpression[][] {
+  const segment = getSegmentFromPoints(
+    meters.map((meter) => [meter.geo_point_2d.lat, meter.geo_point_2d.lon])
+  );
+
+  return segment ? [segment] : [];
+}
+
+function parseOperatingHours(timeineffe: string | null) {
+  if (!timeineffe) return "N/A";
+
+  const match = timeineffe.match(
+    /(\d{1,2}:\d{2}\s*[AP]M\s*TO\s*\d{1,2}:\d{2}\s*[AP]M)/i
+  );
+
+  return match ? match[1] : "N/A";
+}
+
+function buildPopupContent(group: MarkerGroup, t: (key: string) => string) {
+  const { representative, center, meters, rate } = group;
+  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${center[0]},${center[1]}`;
+  const appleMapsUrl = `http://maps.apple.com/?ll=${center[0]},${center[1]}&q=Parking`;
+  const operatingHours = parseOperatingHours(representative.timeineffe);
+  const areas = Array.from(new Set(meters.map((meter) => meter.geo_local_area)));
+  const title = meters.length > 1 ? rate : representative.meterhead;
+  const areaText = areas.join(", ");
+
+  return `
+    <div class="p-2">
+      <h3 class="font-bold text-sm mb-2">${title}</h3>
+      <p class="text-xs mb-1">
+        <strong>${t("parking.area")}:</strong> ${areaText}
+      </p>
+      <p class="text-xs mb-1">
+        <strong>${t("parking.currentRate")}:</strong> ${rate}
+      </p>
+      <p class="text-xs mb-1">
+        <strong>${t("parking.meterCount")}:</strong> ${meters.length}
+      </p>
+      <p class="text-xs mb-1">
+        <strong>${t("parking.operatingHours")}:</strong> ${operatingHours}
+      </p>
+      <p class="text-xs mb-2">
+        <strong>${t("parking.creditCard")}:</strong> ${
+          representative.creditcard === "Yes"
+            ? t("parking.creditCardYes")
+            : t("parking.creditCardNo")
+        }
+      </p>
+      <div class="flex gap-2 mt-2">
+        <a href="${googleMapsUrl}" target="_blank"
+          style="flex: 1; background-color: #3b82f6; color: white; text-align: center; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 12px;">
+          <i class="fab fa-google" style="margin-right: 4px;"></i>${t(
+            "parking.googleMaps"
+          )}
+        </a>
+        <a href="${appleMapsUrl}" target="_blank"
+          style="flex: 1; background-color: #374151; color: white; text-align: center; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 12px;">
+          <i class="fab fa-apple" style="margin-right: 4px;"></i>${t(
+            "parking.appleMaps"
+          )}
+        </a>
+      </div>
+    </div>
+  `;
+}
+
 function ChangeView({
   selectedMeter,
   zoomToMax,
@@ -46,151 +427,30 @@ function ChangeView({
 
   useEffect(() => {
     if (selectedMeter && prevSelectedRef.current !== selectedMeter.meterid) {
-      // 좌표 유효성 검사
-      const lat = selectedMeter.geo_point_2d.lat;
-      const lon = selectedMeter.geo_point_2d.lon;
-
-      console.log(
-        "ChangeView: Checking coordinates for meter:",
-        selectedMeter.meterid,
-        { lat, lon }
-      );
+      const lat = Number(selectedMeter.geo_point_2d.lat);
+      const lon = Number(selectedMeter.geo_point_2d.lon);
 
       if (
         isNaN(lat) ||
         isNaN(lon) ||
-        lat === null ||
-        lon === null ||
-        lat === undefined ||
-        lon === undefined
+        !isFinite(lat) ||
+        !isFinite(lon) ||
+        lat === 0 ||
+        lon === 0
       ) {
-        console.error("Invalid coordinates for meter:", selectedMeter.meterid, {
-          lat,
-          lon,
-          latType: typeof lat,
-          lonType: typeof lon,
-        });
-        return;
-      }
-
-      // 좌표 범위 검사 (Vancouver 지역)
-      if (lat < 49.0 || lat > 49.5 || lon < -123.5 || lon > -122.5) {
-        console.warn("Coordinates outside Vancouver area:", { lat, lon });
-        return;
-      }
-
-      // 최종 좌표 검증 (flyTo 실행 전)
-      const finalLat = Number(lat);
-      const finalLon = Number(lon);
-
-      console.log("Final validation - original:", { lat, lon }, "converted:", {
-        finalLat,
-        finalLon,
-      });
-
-      if (
-        isNaN(finalLat) ||
-        isNaN(finalLon) ||
-        !isFinite(finalLat) ||
-        !isFinite(finalLon) ||
-        finalLat === 0 ||
-        finalLon === 0
-      ) {
-        console.error("Final coordinate validation failed:", {
-          originalLat: lat,
-          originalLon: lon,
-          finalLat,
-          finalLon,
-          latType: typeof lat,
-          lonType: typeof lon,
-          isNaNLat: isNaN(finalLat),
-          isNaNLon: isNaN(finalLon),
-          isFiniteLat: isFinite(finalLat),
-          isFiniteLon: isFinite(finalLon),
-        });
-        return;
-      }
-
-      // 최종 좌표 검증 - 더 엄격한 검사
-      const safeLat = parseFloat(finalLat.toString());
-      const safeLon = parseFloat(finalLon.toString());
-
-      console.log("ChangeView: Final coordinates check:", {
-        originalLat: lat,
-        originalLon: lon,
-        finalLat,
-        finalLon,
-        safeLat,
-        safeLon,
-        latType: typeof finalLat,
-        lonType: typeof finalLon,
-        isNaNLat: isNaN(safeLat),
-        isNaNLon: isNaN(safeLon),
-        isFiniteLat: isFinite(safeLat),
-        isFiniteLon: isFinite(safeLon),
-      });
-
-      if (
-        isNaN(safeLat) ||
-        isNaN(safeLon) ||
-        !isFinite(safeLat) ||
-        !isFinite(safeLon)
-      ) {
-        console.error("Final coordinate validation failed - skipping flyTo:", {
-          safeLat,
-          safeLon,
-          originalLat: lat,
-          originalLon: lon,
-        });
-        return;
-      }
-
-      // 최종 안전 검사
-      if (safeLat === 0 && safeLon === 0) {
-        console.warn("Coordinates are (0,0) - skipping flyTo");
         return;
       }
 
       prevSelectedRef.current = selectedMeter.meterid;
 
-      try {
-        // 줌 레벨 안전 검사
-        const currentZoom = map.getZoom();
-        const targetZoom = zoomToMax ? 18 : currentZoom;
+      const currentZoom = map.getZoom();
+      const targetZoom = zoomToMax ? 18 : currentZoom;
+      const safeZoom = isNaN(targetZoom) ? 15 : targetZoom;
 
-        console.log("ChangeView: Zoom levels:", {
-          currentZoom,
-          targetZoom,
-          zoomToMax,
-          isNaNCurrentZoom: isNaN(currentZoom),
-          isNaNTargetZoom: isNaN(targetZoom),
-        });
-
-        // 줌 레벨이 유효하지 않으면 기본값 사용
-        const safeZoom = isNaN(targetZoom) ? 15 : targetZoom;
-
-        console.log("ChangeView: Attempting flyTo with coordinates:", {
-          safeLat,
-          safeLon,
-          safeZoom,
-        });
-
-        // 選択マーカーへスムーズ移動 (zoomToMaxがtrueなら最大ズーム、そうでなければ現在のズーム維持)
-        // flyTo 대신 setView 사용하여 NaN 오류 방지
-        map.setView([safeLat, safeLon], safeZoom);
-        console.log("setView executed successfully");
-      } catch (error) {
-        console.error("setView failed:", error, {
-          safeLat,
-          safeLon,
-          currentZoom: map.getZoom(),
-          targetZoom: zoomToMax ? 18 : map.getZoom(),
-        });
-      }
+      map.setView([lat, lon], safeZoom);
     }
   }, [selectedMeter, map, zoomToMax]);
 
-  // center와 zoom 변경 감지 (내 위치 버튼 등)
   useEffect(() => {
     if (
       center &&
@@ -198,50 +458,53 @@ function ChangeView({
       !isNaN(center[0]) &&
       !isNaN(center[1])
     ) {
-      console.log("ChangeView: Center/zoom changed:", { center, zoom });
-      try {
-        map.setView(center, zoom);
-        console.log("Map center/zoom updated successfully");
-      } catch (error) {
-        console.error("Failed to update map center/zoom:", error);
-      }
+      map.setView(center, zoom);
     }
   }, [center, zoom, map]);
 
   return null;
 }
 
-// 価格表示アイコン生成関数
-const createPriceIcon = (meter: ParkingMeter, day?: number, hour?: number) => {
-  // 曜日/時間指定時はその時間の料金、そうでなければ現在時刻の料金
-  const rate =
-    day !== undefined && hour !== undefined
-      ? getRateByDayAndHour(meter, day, hour)
-      : getCurrentRate(meter);
-  const price = parsePrice(rate);
+function MapInteractionHandler({
+  followMyLocation,
+  onUserMapDrag,
+  onViewportChange,
+}: {
+  followMyLocation?: boolean;
+  onUserMapDrag?: () => void;
+  onViewportChange?: (view: { center: [number, number]; zoom: number }) => void;
+}) {
+  const map = useMap();
 
-  // 価格による色設定
-  let bgColor = "#10b981"; // 緑 (安い)
-  if (price >= 4) {
-    bgColor = "#ef4444"; // 赤 (高い)
-  } else if (price >= 3) {
-    bgColor = "#f59e0b"; // オレンジ (中間)
-  }
+  useEffect(() => {
+    const handleDragStart = () => {
+      if (followMyLocation) {
+        onUserMapDrag?.();
+      }
+    };
 
-  return L.divIcon({
-    html: `
-      <div class="price-marker" style="background-color: ${bgColor}">
-        <span>${rate}</span>
-      </div>
-    `,
-    className: "custom-price-marker",
-    iconSize: [50, 30],
-    iconAnchor: [25, 30],
-    popupAnchor: [0, -30],
-  });
-};
+    const handleViewportChange = () => {
+      const center = map.getCenter();
+      onViewportChange?.({
+        center: [center.lat, center.lng],
+        zoom: map.getZoom(),
+      });
+    };
 
-// マーカークラスタリングコンポーネント
+    map.on("dragstart", handleDragStart);
+    map.on("moveend", handleViewportChange);
+    map.on("zoomend", handleViewportChange);
+
+    return () => {
+      map.off("dragstart", handleDragStart);
+      map.off("moveend", handleViewportChange);
+      map.off("zoomend", handleViewportChange);
+    };
+  }, [map, followMyLocation, onUserMapDrag, onViewportChange]);
+
+  return null;
+}
+
 function MarkerClusterGroup({
   meters,
   selectedMeter,
@@ -266,19 +529,30 @@ function MarkerClusterGroup({
   const map = useMap();
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
+  const [currentZoom, setCurrentZoom] = useState(() => map.getZoom());
 
-  // マーカーとクラスターグループを生成
   useEffect(() => {
-    if (!map) return;
+    const handleZoomChange = () => {
+      setCurrentZoom(map.getZoom());
+    };
 
-    // マーカークラスターグループ作成
+    map.on("zoomend", handleZoomChange);
+
+    return () => {
+      map.off("zoomend", handleZoomChange);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const markerRefsSnapshot = markerRefs.current;
+    markerRefsSnapshot.clear();
+    const extraLayers: L.Layer[] = [];
+
     const markerClusterGroup = L.markerClusterGroup({
-      // クラスターアイコンカスタマイズ (平均価格で色分け)
       iconCreateFunction: (cluster) => {
         const count = cluster.getChildCount();
         const markers = cluster.getAllChildMarkers();
 
-        // クラスター内の全マーカーの平均価格を計算
         let totalPrice = 0;
         let validPriceCount = 0;
 
@@ -286,6 +560,7 @@ function MarkerClusterGroup({
           const priceValue = (
             marker.options as L.MarkerOptions & { priceValue?: number }
           ).priceValue;
+
           if (priceValue !== undefined) {
             totalPrice += priceValue;
             validPriceCount++;
@@ -293,14 +568,7 @@ function MarkerClusterGroup({
         });
 
         const avgPrice = validPriceCount > 0 ? totalPrice / validPriceCount : 0;
-
-        // 平均価格による色設定
-        let bgColor = "#10b981"; // 緑 (安い)
-        if (avgPrice >= 4) {
-          bgColor = "#ef4444"; // 赤 (高い)
-        } else if (avgPrice >= 3) {
-          bgColor = "#f59e0b"; // オレンジ (中間)
-        }
+        const bgColor = getPriceColor(avgPrice);
 
         return L.divIcon({
           html: `<div style="background-color: ${bgColor}; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><span>${count}</span></div>`,
@@ -308,130 +576,171 @@ function MarkerClusterGroup({
           iconSize: L.point(40, 40),
         });
       },
-      // ズームレベル14以上(18-4=14)でクラスター解除
-      disableClusteringAtZoom: 16,
-      // クラスター半径
+      disableClusteringAtZoom: GROUPING_ZOOM,
       maxClusterRadius: 80,
-      // スパイダーファイ無効化
       spiderfyOnMaxZoom: false,
       spiderfyOnEveryZoom: false,
       showCoverageOnHover: true,
       zoomToBoundsOnClick: true,
     });
 
-    // クラスターグループ参照保存
     clusterGroupRef.current = markerClusterGroup;
 
-    // 各メーターにマーカー追加
-    meters.forEach((meter) => {
-      // 좌표 유효성 검사
-      const meterLat = meter.geo_point_2d.lat;
-      const meterLon = meter.geo_point_2d.lon;
+    const markerGroups =
+      currentZoom >= GROUPING_ZOOM
+        ? buildMarkerGroups(meters, selectedDay, selectedHour)
+        : meters
+            .filter((meter) => {
+              const lat = meter.geo_point_2d.lat;
+              const lon = meter.geo_point_2d.lon;
 
-      if (
-        isNaN(meterLat) ||
-        isNaN(meterLon) ||
-        meterLat === null ||
-        meterLon === null
-      ) {
-        console.warn(
-          "Skipping meter with invalid coordinates:",
-          meter.meterid,
-          { lat: meterLat, lon: meterLon }
-        );
-        return;
-      }
+              return (
+                !isNaN(lat) &&
+                !isNaN(lon) &&
+                lat !== null &&
+                lon !== null &&
+                isFinite(lat) &&
+                isFinite(lon)
+              );
+            })
+            .map((meter) => {
+              const rate = getRateForMeter(meter, selectedDay, selectedHour);
+              const priceValue = parsePrice(rate);
 
-      // 価格表示アイコン使用 (選択曜日/時間反映)
-      const priceIcon = createPriceIcon(meter, selectedDay, selectedHour);
+              return {
+                key: `${meter.meterid}-${rate}`,
+                meters: [meter],
+                rate,
+                priceValue,
+                center: [meter.geo_point_2d.lat, meter.geo_point_2d.lon] as [
+                  number,
+                  number,
+                ],
+                representative: meter,
+              };
+            });
 
-      // 価格値を取得してマーカーオプションに保存
-      const rate =
-        selectedDay !== undefined && selectedHour !== undefined
-          ? getRateByDayAndHour(meter, selectedDay, selectedHour)
-          : getCurrentRate(meter);
-      const priceValue = parsePrice(rate);
+    markerGroups.forEach((group) => {
+      const isGrouped = group.meters.length > 1;
+      const icon = isGrouped
+        ? createGroupedPriceIcon(group.rate, group.priceValue)
+        : createPriceIcon(group.rate, group.priceValue);
+      const popupContent = buildPopupContent(group, t);
+      const groupedLines: L.Polyline[] = [];
 
-      const marker = L.marker([meterLat, meterLon], {
-        icon: priceIcon,
-        priceValue: priceValue,
+      const marker = L.marker(group.center, {
+        icon,
+        priceValue: group.priceValue,
       } as L.MarkerOptions & { priceValue?: number });
 
-      // マーカー参照保存
-      markerRefs.current.set(meter.meterid, marker);
-
-      // ポップアップ設定
-      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${meterLat},${meterLon}`;
-      const appleMapsUrl = `http://maps.apple.com/?ll=${meterLat},${meterLon}&q=Parking`;
-
-      // 営業時間パース (9:00 AM TO 10:00 PM形式抽出)
-      const parseOperatingHours = (timeineffe: string | null) => {
-        if (!timeineffe) return "N/A";
-        const match = timeineffe.match(
-          /(\d{1,2}:\d{2}\s*[AP]M\s*TO\s*\d{1,2}:\d{2}\s*[AP]M)/i
-        );
-        return match ? match[1] : "N/A";
-      };
-
-      const operatingHours = parseOperatingHours(meter.timeineffe);
-
-      const popupContent = `
-        <div class="p-2">
-          <h3 class="font-bold text-sm mb-2">${meter.meterhead}</h3>
-          <p class="text-xs mb-1">
-            <strong>${t("parking.area")}:</strong> ${meter.geo_local_area}
-          </p>
-          <p class="text-xs mb-1">
-            <strong>${t("parking.currentRate")}:</strong> ${getCurrentRate(
-        meter
-      )}
-          </p>
-          <p class="text-xs mb-1">
-            <strong>${t("parking.operatingHours")}:</strong> ${operatingHours}
-          </p>
-          <p class="text-xs mb-2">
-            <strong>${t("parking.creditCard")}:</strong> ${
-        meter.creditcard === "Yes"
-          ? t("parking.creditCardYes")
-          : t("parking.creditCardNo")
-      }
-          </p>
-          <div class="flex gap-2 mt-2">
-            <a href="${googleMapsUrl}" target="_blank" 
-               style="flex: 1; background-color: #3b82f6; color: white; text-align: center; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 12px;">
-              <i class="fab fa-google" style="margin-right: 4px;"></i>${t(
-                "parking.googleMaps"
-              )}
-            </a>
-            <a href="${appleMapsUrl}" target="_blank"
-               style="flex: 1; background-color: #374151; color: white; text-align: center; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 12px;">
-              <i class="fab fa-apple" style="margin-right: 4px;"></i>${t(
-                "parking.appleMaps"
-              )}
-            </a>
-          </div>
-        </div>
-      `;
-
-      // ポップアップがクリック時に閉じないよう設定
-      marker.bindPopup(popupContent, {
-        autoClose: false, // 他のポップアップ開いても閉じない
-        closeOnClick: false, // マップクリック時も閉じない
+      group.meters.forEach((meter) => {
+        markerRefsSnapshot.set(meter.meterid, marker);
       });
 
-      // クリックイベント (onMeterClickのみ呼び出し)
-      marker.on("click", (e) => {
-        L.DomEvent.stopPropagation(e);
-        onMeterClick?.(meter);
+      marker.bindPopup(popupContent, {
+        autoClose: false,
+        closeOnClick: false,
+        autoPan: false,
+      });
+
+      marker.on("click", (event) => {
+        L.DomEvent.stopPropagation(event);
+        onMeterClick?.(group.representative);
       });
 
       markerClusterGroup.addLayer(marker);
+
+      const setMarkerHoverAppearance = (hovered: boolean) => {
+        marker.setZIndexOffset(hovered ? 1000 : 0);
+
+        const markerElement = marker.getElement();
+        const markerInner = markerElement?.firstElementChild as HTMLElement | null;
+
+        if (markerInner) {
+          markerInner.style.transform = hovered ? "scale(1.08)" : "scale(1)";
+          markerInner.style.transformOrigin = "center bottom";
+          markerInner.style.transition = "transform 120ms ease";
+          markerInner.style.boxShadow = hovered
+            ? "0 4px 12px rgba(0, 0, 0, 0.45)"
+            : "0 2px 6px rgba(0, 0, 0, 0.35)";
+        }
+      };
+
+      if (isGrouped) {
+        const lineSegments = getGroupedLineSegments(group.meters);
+
+        lineSegments.forEach((lineLatLngs) => {
+          const line = L.polyline(lineLatLngs, {
+            color: getPriceColor(group.priceValue),
+            weight: 8,
+            opacity: 0.85,
+            lineCap: "round",
+            lineJoin: "round",
+          });
+
+          line.bindPopup(popupContent, {
+            autoClose: false,
+            closeOnClick: false,
+            autoPan: false,
+          });
+
+          const setHoveredStyle = (hovered: boolean) => {
+            line.setStyle({
+              color: getPriceColor(group.priceValue),
+              weight: hovered ? 11 : 8,
+              opacity: hovered ? 1 : 0.85,
+              lineCap: "round",
+              lineJoin: "round",
+            });
+            setMarkerHoverAppearance(hovered);
+          };
+
+          line.on("mouseover", () => {
+            setHoveredStyle(true);
+            line.openPopup();
+          });
+
+          line.on("mouseout", () => {
+            setHoveredStyle(false);
+            line.closePopup();
+          });
+
+          line.on("click", () => {
+            onMeterClick?.(group.representative);
+            line.openPopup();
+          });
+
+          line.addTo(map);
+          groupedLines.push(line);
+          extraLayers.push(line);
+        });
+      }
+
+      if (isGrouped) {
+        const setGroupedHoverState = (hovered: boolean) => {
+          groupedLines.forEach((line) => {
+            line.setStyle({
+              weight: hovered ? 11 : 8,
+              opacity: hovered ? 1 : 0.85,
+            });
+          });
+          setMarkerHoverAppearance(hovered);
+        };
+
+        marker.on("mouseover", () => {
+          setGroupedHoverState(true);
+          marker.openPopup();
+        });
+
+        marker.on("mouseout", () => {
+          setGroupedHoverState(false);
+          marker.closePopup();
+        });
+      }
     });
 
-    // マップ追加
     map.addLayer(markerClusterGroup);
 
-    // 地図移動/ズーム時bounds変更検知
     const handleMoveEnd = () => {
       const bounds = map.getBounds();
       onBoundsChange?.({
@@ -445,30 +754,26 @@ function MarkerClusterGroup({
     map.on("moveend", handleMoveEnd);
     map.on("zoomend", handleMoveEnd);
 
-    // クリーンアップ
     return () => {
       map.removeLayer(markerClusterGroup);
+      extraLayers.forEach((layer) => map.removeLayer(layer));
       map.off("moveend", handleMoveEnd);
       map.off("zoomend", handleMoveEnd);
-      markerRefs.current.clear();
+      markerRefsSnapshot.clear();
       clusterGroupRef.current = null;
     };
-  }, [map, meters, onMeterClick, selectedDay, selectedHour, onBoundsChange]);
+  }, [map, meters, onMeterClick, selectedDay, selectedHour, onBoundsChange, t, currentZoom]);
 
-  // selectedMeter変更時、該当マーカーのポップアップを開く
   useEffect(() => {
     if (!selectedMeter || !clusterGroupRef.current) return;
 
-    // クラスターグループから該当マーカーを探す
     const findAndOpenPopup = () => {
       const marker = markerRefs.current.get(selectedMeter.meterid);
       if (marker && map.hasLayer(marker)) {
-        // マーカーが表示されているか確認
         marker.openPopup();
       }
     };
 
-    // flyToアニメーション完了後にポップアップ開く
     const timer = setTimeout(findAndOpenPopup, 700);
 
     return () => clearTimeout(timer);
@@ -477,7 +782,6 @@ function MarkerClusterGroup({
   return null;
 }
 
-// ユーザー位置マーカーコンポーネント
 function UserLocationMarker({
   userLocation,
 }: {
@@ -489,7 +793,6 @@ function UserLocationMarker({
 
   useEffect(() => {
     if (!userLocation || !map) {
-      // userLocation이 없으면 마커 제거
       if (markerRef.current) {
         map.removeLayer(markerRef.current);
         markerRef.current = null;
@@ -497,7 +800,6 @@ function UserLocationMarker({
       return;
     }
 
-    // ユーザー位置マーカー作成
     const userIcon = L.divIcon({
       html: `
         <div style="
@@ -514,26 +816,26 @@ function UserLocationMarker({
       iconAnchor: [10, 10],
     });
 
-    // マーカー作成または更新
     if (markerRef.current) {
       markerRef.current.setLatLng([userLocation.lat, userLocation.lon]);
     } else {
       const marker = L.marker([userLocation.lat, userLocation.lon], {
         icon: userIcon,
-        zIndexOffset: 1000, // 他のマーカーより上に表示
+        zIndexOffset: 1000,
       });
       marker.addTo(map);
       markerRef.current = marker;
 
-      // ポップアップ設定
       marker.bindPopup(
         `<div style="text-align: center; padding: 4px;">
           <strong>${t("location.yourLocation")}</strong>
-        </div>`
+        </div>`,
+        {
+          autoPan: false,
+        }
       );
     }
 
-    // クリーンアップ
     return () => {
       if (markerRef.current) {
         map.removeLayer(markerRef.current);
@@ -556,21 +858,10 @@ export default function ParkingMap({
   onBoundsChange,
   zoomToMax,
   userLocation,
+  followMyLocation,
+  onUserMapDrag,
+  onViewportChange,
 }: ParkingMapProps) {
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  if (!isMounted) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-100">
-        <p>Loading map...</p>
-      </div>
-    );
-  }
-
   return (
     <MapContainer
       center={center}
@@ -583,6 +874,11 @@ export default function ParkingMap({
         zoomToMax={zoomToMax}
         center={center}
         zoom={zoom}
+      />
+      <MapInteractionHandler
+        followMyLocation={followMyLocation}
+        onUserMapDrag={onUserMapDrag}
+        onViewportChange={onViewportChange}
       />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

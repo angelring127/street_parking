@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ParkingMeter, SortOption } from "@/types/parking";
 import {
@@ -43,6 +43,12 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"map" | "list" | "both">("map");
   const [zoomToMax, setZoomToMax] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [locationWatchId, setLocationWatchId] = useState<number | null>(null);
+  const [isLocationTracking, setIsLocationTracking] = useState(false);
+  const [followMyLocation, setFollowMyLocation] = useState(false);
+  const locationWatchIdRef = useRef<number | null>(null);
+  const hasCenteredTrackedLocationRef = useRef(false);
+  const followMyLocationRef = useRef(false);
 
   // 現在の日時を取得してデフォルト値に設定
   const now = new Date();
@@ -56,7 +62,7 @@ export default function Home() {
 
   // データ読み込み
   useEffect(() => {
-    fetch("/data/parking-meters.json")
+    fetch("/api/parking-meters")
       .then((res) => res.json())
       .then((data: ParkingMeter[]) => {
         setAllMeters(data);
@@ -65,6 +71,10 @@ export default function Home() {
         console.error("データの読み込みに失敗:", error);
       });
   }, []);
+
+  useEffect(() => {
+    followMyLocationRef.current = followMyLocation;
+  }, [followMyLocation]);
 
   // フィルタリングとソート
   const filteredAndSortedMeters = useMemo(() => {
@@ -86,7 +96,13 @@ export default function Home() {
     }
 
     // ソート
-    return sortParkingMeters(filtered, sortOption, userLocation || undefined);
+    return sortParkingMeters(
+      filtered,
+      sortOption,
+      userLocation || undefined,
+      selectedDay,
+      selectedHour
+    );
   }, [
     allMeters,
     maxPrice,
@@ -97,10 +113,6 @@ export default function Home() {
     selectedHour,
   ]);
 
-  // 디버깅을 위한 콘솔 출력
-  console.log("Current language:", language);
-  console.log("Translation test:", t("header.title"));
-
   // 現在位置取得
   const handleGetCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -108,15 +120,30 @@ export default function Home() {
       return;
     }
 
-    console.log("Getting current location...");
+    if (locationWatchId !== null || locationWatchIdRef.current !== null) {
+      if (userLocation) {
+        setMapCenter([userLocation.lat, userLocation.lon]);
+      }
+      return;
+    }
 
-    navigator.geolocation.getCurrentPosition(
+    hasCenteredTrackedLocationRef.current = false;
+
+    const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
-        console.log("Location success:", { latitude, longitude });
         setUserLocation({ lat: latitude, lon: longitude });
-        setMapCenter([latitude, longitude]);
-        setMapZoom(16);
+
+        if (!hasCenteredTrackedLocationRef.current) {
+          setMapCenter([latitude, longitude]);
+          setMapZoom(16);
+          hasCenteredTrackedLocationRef.current = true;
+          return;
+        }
+
+        if (followMyLocationRef.current) {
+          setMapCenter([latitude, longitude]);
+        }
       },
       (error) => {
         console.error("Location error:", error);
@@ -125,6 +152,13 @@ export default function Home() {
         switch (error.code) {
           case error.PERMISSION_DENIED:
             errorMessage = t("location.permissionDenied");
+            if (locationWatchIdRef.current !== null) {
+              navigator.geolocation.clearWatch(locationWatchIdRef.current);
+              locationWatchIdRef.current = null;
+              setLocationWatchId(null);
+              setIsLocationTracking(false);
+              setFollowMyLocation(false);
+            }
             break;
           case error.POSITION_UNAVAILABLE:
             errorMessage = t("location.unavailable");
@@ -142,10 +176,24 @@ export default function Home() {
         maximumAge: 0,
       }
     );
+
+    locationWatchIdRef.current = watchId;
+    setLocationWatchId(watchId);
+    setIsLocationTracking(true);
   };
+
+  useEffect(() => {
+    return () => {
+      if (locationWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(locationWatchIdRef.current);
+      }
+    };
+  }, []);
 
   // 検索機能 (住所オートコンプリートから座標取得)
   const handleSearch = (lat: number, lon: number, _address: string) => {
+    void _address;
+
     // 좌표 유효성 검사
     if (isNaN(lat) || isNaN(lon)) {
       console.error("Invalid search coordinates:", { lat, lon });
@@ -194,12 +242,6 @@ export default function Home() {
     const lat = meter.geo_point_2d.lat;
     const lon = meter.geo_point_2d.lon;
 
-    console.log(
-      "handleMeterClick: Checking meter coordinates:",
-      meter.meterid,
-      { lat, lon }
-    );
-
     // 강화된 좌표 검증
     const finalLat = Number(lat);
     const finalLon = Number(lon);
@@ -237,12 +279,6 @@ export default function Home() {
     // 좌표 유효성 검사
     const lat = meter.geo_point_2d.lat;
     const lon = meter.geo_point_2d.lon;
-
-    console.log(
-      "handleMeterClickFromList: Checking meter coordinates:",
-      meter.meterid,
-      { lat, lon }
-    );
 
     // 강화된 좌표 검증
     const finalLat = Number(lat);
@@ -304,6 +340,32 @@ export default function Home() {
     setSelectedHour(hour);
   };
 
+  const handleFollowMyLocationChange = (value: boolean) => {
+    setFollowMyLocation(value);
+
+    if (value && userLocation) {
+      setMapCenter([userLocation.lat, userLocation.lon]);
+    }
+  };
+
+  const handleUserMapDrag = () => {
+    if (followMyLocation) {
+      setFollowMyLocation(false);
+    }
+  };
+
+  const handleViewportChange = (view: {
+    center: [number, number];
+    zoom: number;
+  }) => {
+    setMapCenter((prev) =>
+      prev[0] === view.center[0] && prev[1] === view.center[1]
+        ? prev
+        : view.center
+    );
+    setMapZoom((prev) => (prev === view.zoom ? prev : view.zoom));
+  };
+
   return (
     <div className="h-screen flex flex-col">
       {/* ヘッダー */}
@@ -360,6 +422,9 @@ export default function Home() {
           <SearchBar
             onSearch={handleSearch}
             onGetCurrentLocation={handleGetCurrentLocation}
+            followMyLocation={followMyLocation}
+            onFollowMyLocationChange={handleFollowMyLocationChange}
+            isLocationTracking={isLocationTracking}
           />
         </div>
       </div>
@@ -369,6 +434,9 @@ export default function Home() {
         <SearchBar
           onSearch={handleSearch}
           onGetCurrentLocation={handleGetCurrentLocation}
+          followMyLocation={followMyLocation}
+          onFollowMyLocationChange={handleFollowMyLocationChange}
+          isLocationTracking={isLocationTracking}
         />
       </div>
 
@@ -560,11 +628,8 @@ export default function Home() {
                     <option value="price-desc">
                       {t("filter.sort.priceDesc")}
                     </option>
-                    <option value="distance-asc">
+                    <option value="distance">
                       {t("filter.sort.distanceAsc")}
-                    </option>
-                    <option value="distance-desc">
-                      {t("filter.sort.distanceDesc")}
                     </option>
                   </select>
                 </div>
@@ -612,6 +677,9 @@ export default function Home() {
                 selectedHour={selectedHour}
                 zoomToMax={zoomToMax}
                 userLocation={userLocation || undefined}
+                followMyLocation={followMyLocation}
+                onUserMapDrag={handleUserMapDrag}
+                onViewportChange={handleViewportChange}
               />
             </div>
           )}
@@ -671,6 +739,9 @@ export default function Home() {
                 selectedHour={selectedHour}
                 zoomToMax={zoomToMax}
                 userLocation={userLocation || undefined}
+                followMyLocation={followMyLocation}
+                onUserMapDrag={handleUserMapDrag}
+                onViewportChange={handleViewportChange}
               />
             </div>
 
@@ -684,18 +755,6 @@ export default function Home() {
                 selectedDay={selectedDay}
                 selectedHour={selectedHour}
                 onGoToMap={handleGoToMap}
-                scrollToMeter={(meterId) => {
-                  // PC에서만 스크롤 기능 사용
-                  const meterElement = document.getElementById(
-                    `meter-${meterId}`
-                  );
-                  if (meterElement) {
-                    meterElement.scrollIntoView({
-                      behavior: "smooth",
-                      block: "nearest",
-                    });
-                  }
-                }}
               />
             </div>
           </div>

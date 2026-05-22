@@ -5,16 +5,22 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 interface TimeRateInfoProps {
   meter: ParkingMeter;
+  selectedDay?: number;
+  selectedHour?: number;
 }
 
 /**
  * 시간대별, 요일별 요금 정보를 상세하게 표시하는 컴포넌트
  */
-export default function TimeRateInfo({ meter }: TimeRateInfoProps) {
+export default function TimeRateInfo({
+  meter,
+  selectedDay,
+  selectedHour,
+}: TimeRateInfoProps) {
   const { t } = useLanguage();
   const now = new Date();
-  const day = now.getDay(); // 0: 일요일, 1-5: 평일, 6: 토요일
-  const hour = now.getHours();
+  const day = selectedDay !== undefined ? selectedDay : now.getDay(); // 0: 일요일, 1-5: 평일, 6: 토요일
+  const hour = selectedHour !== undefined ? selectedHour : now.getHours();
 
   const isMorning = hour >= 9 && hour < 18;
   const isEvening = hour >= 18 && hour < 22;

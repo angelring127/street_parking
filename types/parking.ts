@@ -32,6 +32,8 @@ export interface ParkingMeter {
     lon: number;
     lat: number;
   };
+  sector?: number | null;
+  direction?: string | null;
 }
 
 // 필터 타입

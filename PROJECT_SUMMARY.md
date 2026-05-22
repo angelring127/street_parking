@@ -1,345 +1,125 @@
-# 🅿️ Vancouver Street Parking Price Finder - 프로젝트 요약
+# Project Summary
+
+Last updated: 2026-03-25
 
 ## 프로젝트 개요
 
-Vancouver 시의 거리 주차 미터 가격 정보를 실시간으로 확인할 수 있는 웹 애플리케이션입니다.
-사용자는 현재 위치 또는 주소 검색을 통해 주변 주차 정보를 지도와 리스트 형태로 확인할 수 있습니다.
-
-## ✅ 구현 완료 사항
-
-### 1. 핵심 기능
-
-- ✅ **🗺️ 스마트 마커 클러스터링**: 7,000개 주차 미터를 효율적으로 표시 (NEW!)
-  - 줌 레벨에 따라 자동 그룹화/해제
-  - 단색 빨간색 클러스터, 개수에 따라 크기 자동 조절
-  - 성능 80% 개선 (로딩 시간 5초 → 1초)
-  - 가시 영역 기반 동적 필터링으로 추가 성능 향상
-- ✅ **⏰ 동적 요금 표시**: 사용자가 선택한 시간과 요일에 따른 정확한 주차 요금 표시
-  - 필터 패널에서 요일/시간 선택 가능 (기본값: 현재 날짜/시간)
-  - 지도 마커에 요금 직접 표시 (가격에 따라 색상 구분)
-- ✅ **📅 시간대별 상세 정보**: 평일/주말, 오전/저녁 시간대별 요금 비교
-  - 별도 버튼으로 상세 요금 정보 확장/축소
-  - 운영 시간 명확히 표시 (예: "9:00 AM TO 10:00 PM")
-- ✅ **인터랙티브 지도**: Leaflet 기반 실시간 지도 뷰
-  - 마커 클릭 시 중앙 이동 및 팝업 표시
-  - 가시 영역 기반 동적 필터링
-- ✅ **리스트 뷰**: 상세한 주차 정보 카드 형태 표시
-  - 지도 핀 클릭 시 해당 항목으로 자동 스크롤
-  - 리스트 항목 클릭 시 지도 이동
-  - 별도 버튼으로 시간대별 상세 요금 확인
-- ✅ **현재 위치 검색**: GPS 기반 주변 주차장 찾기
-- ✅ **주소/지역 검색**: 특정 지역 주차 정보 검색
-- ✅ **필터링**: 요일/시간, 가격, 신용카드 사용 가능 여부로 필터링
-- ✅ **정렬**: 가격, 거리 기준 정렬
-- ✅ **내비게이션**: Google Maps 및 Apple Maps 연동
-- ✅ **반응형 디자인**: 모바일/태블릿/데스크톱 완벽 지원
-
-### 2. 기술 스택
-
-- **Framework**: Next.js 15 (App Router, Turbopack)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS 4.0
-- **Map**: Leaflet + React-Leaflet + Leaflet.markercluster
-- **Data**: Vancouver Open Data Portal (약 7,000개 주차 미터)
-
-### 3. 프로젝트 구조
-
-```
-street_parking_price/
-├── app/                        # Next.js App Router
-│   ├── layout.tsx             # 루트 레이아웃, 메타데이터
-│   ├── page.tsx               # 메인 페이지 (지도+리스트+필터)
-│   └── globals.css            # 전역 스타일, Leaflet CSS
-├── components/                # React 컴포넌트
-│   ├── ParkingMap.tsx        # 지도 컴포넌트 (Leaflet)
-│   ├── ParkingList.tsx       # 리스트 컴포넌트
-│   ├── FilterPanel.tsx       # 필터 패널
-│   ├── SearchBar.tsx         # 검색 바
-│   └── AdBanner.tsx          # 광고 배너 (미래 구현)
-├── lib/                       # 유틸리티
-│   └── utils.ts              # 헬퍼 함수 (거리 계산, 정렬 등)
-├── types/                     # TypeScript 타입
-│   └── parking.ts            # 주차 데이터 타입 정의
-├── public/data/              # 정적 데이터
-│   └── parking-meters.json   # Vancouver 주차 데이터 (2.8MB)
-├── scripts/                   # 스크립트
-│   └── update-data.sh        # 데이터 업데이트 스크립트
-├── docs/                      # 문서
-│   ├── DATA_STRUCTURE.md     # 데이터 구조 설명
-│   └── FEATURES.md           # 기능 상세 설명
-├── README.md                  # 프로젝트 개요
-├── DEPLOYMENT.md             # 배포 가이드
-└── CONTRIBUTING.md           # 기여 가이드
-```
-
-## 📊 데이터 정보
-
-- **출처**: Vancouver Open Data Portal
-- **API**: https://opendata.vancouver.ca/api/explore/v2.1/catalog/datasets/parking-meters
-- **레코드 수**: 약 7,000개
-- **업데이트 주기**: 주간
-- **데이터 크기**: 2.8MB (JSON)
-- **라이선스**: Open Government License - Vancouver
-
-## 🎯 주요 특징
-
-### 1. 🗺️ 스마트 마커 클러스터링 시스템 (NEW!)
-
-7,000개 이상의 주차 미터를 효율적으로 표시하기 위한 지능형 클러스터링 시스템.
-
-**줌 레벨별 표시:**
-
-- **낮은 줌** (전체 보기): 지역별 대형 클러스터 (100+ 개)
-- **중간 줌** (지역 보기): 소그룹 클러스터 (50-99개)
-- **높은 줌** (블록 보기): 작은 클러스터 (10-49개)
-- **최대 줌** (줌 17+): 개별 주차 미터 마커 (요금 직접 표시)
+이 프로젝트는 Vancouver 시의 거리 주차 미터 데이터를 지도와 리스트로 탐색할 수 있게 만든 클라이언트 중심 웹 앱입니다.
 
-**클러스터 디자인:**
-
-- 🔴 단색 빨간색 원형
-- 개수에 따라 크기 자동 조절 (80px 아이콘)
-- 굵은 흰색 텍스트로 가독성 극대화
-- 그림자 효과로 입체감 강조
+핵심 사용자 흐름은 다음과 같습니다.
 
-**성능 개선:**
+1. 주소 또는 현재 위치로 원하는 지역을 찾는다.
+2. 요일과 시간을 선택해 해당 시점의 요금을 본다.
+3. 지도와 리스트에서 주차 미터를 비교한다.
+4. Google Maps 또는 Apple Maps로 이동한다.
 
-- 초기 로딩: 5초 → 1초 (80% 개선)
-- 가시 영역 기반 동적 필터링으로 추가 성능 향상
-- 부드러운 지도 이동 및 줌
-- 메모리 사용량 최적화
+## 현재 구현 상태
 
-### 2. ⏰ 동적 시간/요일별 요금 계산
+### 사용자 기능
 
-사용자가 선택한 시간과 요일에 따른 정확한 주차 요금을 표시합니다.
+- 주소 자동완성 검색
+- 현재 위치 기반 탐색
+- 지도/리스트 동기화
+- 요일/시간 선택 기반 요금 표시
+- 시간대별 상세 요금표
+- 최대 요금 필터
+- 신용카드 가능 여부 필터
+- 가격/거리 정렬
+- 지도 마커 클러스터링
+- 모바일 지도/리스트 탭 전환
+- 한국어/영어 전환
 
-**필터 패널 기능:**
+### 기술 상태
 
-- 요일 선택: 일요일 ~ 토요일
-- 시간 선택: 0시 ~ 23시 (슬라이더)
-- "현재 날짜/시간으로 설정" 버튼
-- 기본값: 현재 날짜 및 시간
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- Leaflet + react-leaflet + leaflet.markercluster
+- 정적 데이터 파일 기반 동작
 
-**시간대별 구분:**
+### 검증 상태
 
-- 오전 (9am-6pm): 일반 요금
-- 저녁 (6pm-10pm): 저녁 요금
-- 미운영 (10pm-9am): 주차 미터 미운영 표시
+- `npm run build` 통과
+- `npm run lint` 통과
 
-**요일별 구분:**
+## 실제 코드 구조
 
-- 평일 (월-금): 평일 요금
-- 토요일: 주말 요금
-- 일요일: 주말 요금
+### 메인 페이지
 
-**실시간 반영:**
+- [app/page.tsx](/Users/hoya/Project/AI/street_parking_price/app/page.tsx)
+  - 전체 UI 상태를 관리
+  - 데이터 로드
+  - 필터링/정렬
+  - 모바일/데스크톱 레이아웃 분기
 
-- 지도 마커에 선택된 시간의 요금 직접 표시 (가격별 색상 구분)
-- 리스트에 선택된 시간의 요금 표시
-- 필터 변경 시 즉시 업데이트
+### 지도
 
-**상세 정보 보기:**
+- [components/ParkingMap.tsx](/Users/hoya/Project/AI/street_parking_price/components/ParkingMap.tsx)
+  - Leaflet 지도 생성
+  - 가격 마커 생성
+  - 마커 클러스터 구성
+  - 선택된 미터로 지도 이동
+  - 사용자 위치 마커 표시
 
-- "시간대별 요금 상세 보기" 버튼 클릭 시 확장
-- 모든 시간대/요일별 요금을 한눈에 비교
-- 선택된 시간대는 초록색으로 하이라이트 + "현재" 배지 표시
-- 각 시간대의 주차 시간 제한도 함께 표시
-- 미운영 시간에는 빨간색 경고 메시지
-- 운영 시간 명확히 표시 (예: "9:00 AM TO 10:00 PM")
+### 리스트
 
-### 3. 🗺️ 지도-리스트 동기화 시스템
+- [components/ParkingList.tsx](/Users/hoya/Project/AI/street_parking_price/components/ParkingList.tsx)
+  - 카드형 리스트 렌더링
+  - 무한 스크롤 방식으로 초기 20개부터 렌더링
+  - 상세 요금표 토글
+  - 내비게이션 링크 표시
 
-**지도에서 리스트로:**
+### 필터 및 검색
 
-- 지도 핀 클릭 시 해당 리스트 항목으로 자동 스크롤
-- 선택된 항목 하이라이트 (파란색 테두리)
+- [components/FilterPanel.tsx](/Users/hoya/Project/AI/street_parking_price/components/FilterPanel.tsx)
+- [components/SearchBar.tsx](/Users/hoya/Project/AI/street_parking_price/components/SearchBar.tsx)
 
-**리스트에서 지도로:**
+### 다국어
 
-- 리스트 항목 클릭 시 지도 중앙으로 이동
-- 줌 레벨 유지 (불필요한 줌 아웃 방지)
+- [contexts/LanguageContext.tsx](/Users/hoya/Project/AI/street_parking_price/contexts/LanguageContext.tsx)
 
-**마커 표시:**
+### 유틸리티 및 타입
 
-- 개별 마커에 요금 직접 표시
-- 가격별 색상 구분:
-  - 🟢 초록색: $0-$2.99 (저렴)
-  - 🟠 주황색: $3.00-$3.99 (중간)
-  - 🔴 빨간색: $4.00+ (비쌈)
+- [lib/utils.ts](/Users/hoya/Project/AI/street_parking_price/lib/utils.ts)
+- [types/parking.ts](/Users/hoya/Project/AI/street_parking_price/types/parking.ts)
 
-**내비게이션 연동:**
+## 데이터 현황
 
-- Google Maps 링크 (팝업 및 리스트)
-- Apple Maps 링크 (팝업 및 리스트)
-- 정확한 좌표로 바로 이동
+- 런타임 데이터 파일: [parking-meters.geojson](/Users/hoya/Project/AI/street_parking_price/parking-meters.geojson)
+- 현재 저장소 스냅샷 GeoJSON feature 수: 3,949
+- 현재 저장소 스냅샷 파일 크기: 3,671,450 bytes
+- 갱신 스크립트: [scripts/update-data.sh](/Users/hoya/Project/AI/street_parking_price/scripts/update-data.sh)
 
-### 4. 위치 기반 거리 계산
+데이터 수치는 고정값이 아니라 현재 저장소에 포함된 스냅샷 기준입니다.
 
-Haversine 공식을 사용하여 사용자 위치에서 각 주차 미터까지의 정확한 거리를 계산합니다.
+## 현재 로컬 변경 사항
 
-### 5. 고급 필터링 시스템
+`git status` 기준으로 다음 파일들에 로컬 수정이 존재합니다.
 
-- 요일/시간 필터 (사용자 지정 가능)
-- $0-$10 범위의 가격 필터
-- 신용카드 사용 가능 여부 필터
-- 가시 영역 기반 동적 필터링 (버벅임 해결)
+- [app/layout.tsx](/Users/hoya/Project/AI/street_parking_price/app/layout.tsx)
+- [components/AdBanner.tsx](/Users/hoya/Project/AI/street_parking_price/components/AdBanner.tsx)
+- [components/SearchBar.tsx](/Users/hoya/Project/AI/street_parking_price/components/SearchBar.tsx)
+- [components/TimeRateInfo.tsx](/Users/hoya/Project/AI/street_parking_price/components/TimeRateInfo.tsx)
 
-### 6. 반응형 UI
+수정 방향은 다음과 같습니다.
 
-- 데스크톱: 4열 그리드 (필터 + 지도 + 리스트)
-- 태블릿: 2열 레이아웃
-- 모바일: 뷰 전환 버튼 (지도/리스트/전체)
+- AdSense 스크립트 로드
+- AdSense 광고 컴포넌트 준비
+- 모바일 메뉴 닫기 동작 보완
+- 상세 요금표가 선택된 요일/시간을 받도록 변경
 
-## 🚀 실행 방법
+## 알려진 구현 차이와 주의점
 
-### 개발 모드
+### 1. AdBanner 미사용
 
-```bash
-npm install
-npm run dev
-```
+[components/AdBanner.tsx](/Users/hoya/Project/AI/street_parking_price/components/AdBanner.tsx)는 존재하지만 메인 페이지에 아직 실제 배치되지 않았습니다.
 
-→ http://localhost:3000
+### 2. 데이터 구조 변환
 
-### 프로덕션 빌드
+앱은 `/api/parking-meters`에서 [parking-meters.geojson](/Users/hoya/Project/AI/street_parking_price/parking-meters.geojson)을 `ParkingMeter` 형태로 정규화해서 사용합니다.
 
-```bash
-npm run build
-npm start
-```
+## 다음 작업 우선순위
 
-### 데이터 업데이트
-
-```bash
-npm run update-data
-```
-
-## 💰 수익화 전략
-
-### Phase 1: 광고 수익
-
-- Google AdSense 통합
-- 전략적 광고 배치:
-  - 헤더 상단
-  - 사이드바
-  - 리스트 사이
-  - 푸터
-
-### Phase 2: 프리미엄 기능
-
-- 즐겨찾기 동기화
-- 실시간 주차 가능 여부
-- 주차 시간 알림
-- 광고 제거
-
-### Phase 3: 제휴 마케팅
-
-- 주차 예약 플랫폼 제휴
-- 카 셰어링 서비스 연동
-- 주변 상점 광고
-
-## 📈 향후 계획
-
-### 단기 (1-2개월)
-
-- [ ] Google AdSense 통합
-- [ ] SEO 최적화
-- [ ] 사용자 분석 (Google Analytics)
-- [ ] 성능 최적화
-
-### 중기 (3-6개월)
-
-- [ ] PWA 변환
-- [ ] 다국어 지원 (영어, 중국어)
-- [ ] 사용자 계정 시스템
-- [ ] 리뷰 및 평점 기능
-
-### 장기 (6개월+)
-
-- [ ] 실시간 주차 정보
-- [ ] 예약 시스템
-- [ ] 다른 도시 확장
-- [ ] 모바일 앱
-
-## 📦 배포
-
-### 추천: Vercel
-
-1. GitHub에 코드 푸시
-2. Vercel에서 Import
-3. 자동 배포 완료
-
-### 데이터 업데이트
-
-- 수동: `npm run update-data`
-- 자동: GitHub Actions (주간 자동 실행)
-
-## 🛠️ 기술적 특징
-
-### 성능
-
-- Static Generation
-- 빌드 시간: ~3초
-- First Load JS: 118KB
-- Turbopack 사용
-
-### 코드 품질
-
-- TypeScript 100%
-- ESLint 검증 통과
-- 타입 안전성
-- 컴포넌트 분리
-
-### 접근성
-
-- 시맨틱 HTML
-- 키보드 네비게이션
-- 반응형 디자인
-- 모바일 터치 최적화
-
-## 📝 문서
-
-- `README.md`: 프로젝트 개요 및 시작 가이드
-- `DEPLOYMENT.md`: 배포 및 설정 가이드
-- `CONTRIBUTING.md`: 기여 가이드
-- `docs/DATA_STRUCTURE.md`: 데이터 구조 설명
-- `docs/FEATURES.md`: 기능 상세 설명
-
-## 🎨 디자인 철학
-
-- **미니멀리즘**: 깔끔하고 직관적인 UI
-- **정보 우선**: 중요한 정보를 눈에 띄게 표시
-- **빠른 접근**: 최소한의 클릭으로 원하는 정보 접근
-- **모바일 우선**: 모바일 사용자 경험 최우선
-
-## 🔒 보안 및 프라이버시
-
-- 위치 정보는 로컬에서만 처리
-- 서버에 개인 정보 전송 없음
-- HTTPS 필수
-- 환경 변수로 API 키 관리
-
-## 📞 지원 및 피드백
-
-- GitHub Issues: 버그 리포트 및 기능 제안
-- Pull Requests: 언제나 환영합니다!
-
-## 📄 라이선스
-
-MIT License
-
----
-
-**개발 시작**: 2025년 10월
-**현재 버전**: 0.1.0 (MVP)
-**목표**: 광고 수익을 통한 지속 가능한 무료 서비스 제공
-
-## 🙏 감사의 말
-
-- Vancouver Open Data Portal: 오픈 데이터 제공
-- OpenStreetMap: 지도 타일 제공
-- Leaflet: 오픈소스 지도 라이브러리
-- Next.js 팀: 훌륭한 프레임워크
-
----
-
-**Made with ❤️ in Vancouver**
+1. 광고 컴포넌트를 실제 UI에 배치할지 결정할 것
+2. 데이터 갱신 자동화가 필요하면 GitHub Actions 등을 추가할 것

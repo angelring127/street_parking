@@ -24,6 +24,11 @@ const translations = {
     "search.currentLocationTitle": "현재 위치로 이동",
     "search.loading": "현재 위치를 가져오는 중...",
     "search.apiInfo": "💡 OpenStreetMap 기반 무료 주소 검색 (API 키 불필요)",
+    "search.followMyLocation": "화면을 내위치",
+    "search.followMyLocationHelp":
+      "켜면 현재 위치가 바뀔 때 지도가 함께 따라옵니다.",
+    "search.followMyLocationDisabled":
+      "먼저 내 위치 버튼을 눌러 위치 추적을 시작하세요.",
 
     // Location errors
     "location.browserNotSupported":
@@ -43,6 +48,7 @@ const translations = {
     "parking.totalMeters": "📊 총 {count}개의 주차 미터",
     "parking.area": "지역",
     "parking.currentRate": "현재 요금",
+    "parking.meterCount": "미터 수",
     "parking.operatingHours": "운영 시간",
     "parking.creditCard": "신용카드",
     "parking.creditCardYes": "가능",
@@ -125,6 +131,11 @@ const translations = {
     "search.loading": "Getting current location...",
     "search.apiInfo":
       "💡 Free address search based on OpenStreetMap (No API key required)",
+    "search.followMyLocation": "Follow my location",
+    "search.followMyLocationHelp":
+      "When enabled, the map recenters as your location updates.",
+    "search.followMyLocationDisabled":
+      "Start location tracking with My Location first.",
 
     // Location errors
     "location.browserNotSupported":
@@ -144,6 +155,7 @@ const translations = {
     "parking.totalMeters": "📊 Total {count} parking meters",
     "parking.area": "Area",
     "parking.currentRate": "Current Rate",
+    "parking.meterCount": "Meter Count",
     "parking.operatingHours": "Operating Hours",
     "parking.creditCard": "Credit Card",
     "parking.creditCardYes": "Available",
@@ -251,8 +263,6 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       return key;
     }
   };
-
-  console.log("LanguageProvider rendering with language:", language);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>

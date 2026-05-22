@@ -6,6 +6,10 @@ import { useLanguage } from "@/contexts/LanguageContext";
 interface SearchBarProps {
   onSearch: (lat: number, lon: number, address: string) => void;
   onGetCurrentLocation: () => void;
+  onCloseMenu?: () => void; // 햄버거 메뉴 닫기 콜백
+  followMyLocation: boolean;
+  onFollowMyLocationChange: (value: boolean) => void;
+  isLocationTracking?: boolean;
 }
 
 interface NominatimResult {
@@ -18,6 +22,10 @@ interface NominatimResult {
 export default function SearchBar({
   onSearch,
   onGetCurrentLocation,
+  onCloseMenu,
+  followMyLocation,
+  onFollowMyLocationChange,
+  isLocationTracking = false,
 }: SearchBarProps) {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,7 +37,6 @@ export default function SearchBar({
   // Nominatim API 呼び出し (debounce付き)
   useEffect(() => {
     if (searchQuery.length < 3) {
-      setSuggestions([]);
       return;
     }
 
@@ -68,6 +75,15 @@ export default function SearchBar({
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
+
+    if (value.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
   // 外部クリック検知
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -90,6 +106,10 @@ export default function SearchBar({
     setSearchQuery(suggestion.display_name);
     setShowSuggestions(false);
     onSearch(lat, lon, suggestion.display_name);
+    // 햄버거 메뉴 닫기
+    if (onCloseMenu) {
+      onCloseMenu();
+    }
   };
 
   // キーボード検索 (Enterキー)
@@ -97,6 +117,15 @@ export default function SearchBar({
     e.preventDefault();
     if (suggestions.length > 0) {
       handleSelectSuggestion(suggestions[0]);
+    }
+  };
+
+  // 내 위치 버튼 클릭 핸들러
+  const handleGetCurrentLocationClick = () => {
+    onGetCurrentLocation();
+    // 햄버거 메뉴 닫기
+    if (onCloseMenu) {
+      onCloseMenu();
     }
   };
 
@@ -111,10 +140,10 @@ export default function SearchBar({
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchQueryChange(e.target.value)}
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               placeholder={t("search.placeholder")}
-              className="w-full p-2 md:p-3 text-sm md:text-base border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full p-2 md:p-3 text-sm md:text-base border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               autoComplete="off"
             />
 
@@ -151,7 +180,7 @@ export default function SearchBar({
           <div className="flex justify-end md:block">
             <button
               type="button"
-              onClick={onGetCurrentLocation}
+              onClick={handleGetCurrentLocationClick}
               className="px-3 py-2 md:px-6 md:py-3 text-xs md:text-base bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium whitespace-nowrap"
               title={t("search.currentLocationTitle")}
             >
@@ -165,6 +194,36 @@ export default function SearchBar({
         <p className="text-xs text-gray-500 mt-1 md:mt-2 hidden md:block">
           {t("search.apiInfo")}
         </p>
+
+        <div className="mt-3 flex items-start gap-2">
+          <input
+            id="follow-my-location"
+            type="checkbox"
+            checked={followMyLocation}
+            disabled={!isLocationTracking}
+            onChange={(e) => onFollowMyLocationChange(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <div className="min-w-0">
+            <label
+              htmlFor="follow-my-location"
+              className={`text-sm font-medium ${
+                isLocationTracking ? "text-gray-700" : "text-gray-400"
+              }`}
+            >
+              {t("search.followMyLocation")}
+            </label>
+            <p
+              className={`text-xs mt-0.5 ${
+                isLocationTracking ? "text-gray-500" : "text-gray-400"
+              }`}
+            >
+              {isLocationTracking
+                ? t("search.followMyLocationHelp")
+                : t("search.followMyLocationDisabled")}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

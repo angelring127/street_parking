@@ -1,190 +1,83 @@
-# ⏰ 시간/요일별 주차 요금 시스템
+# 시간 기반 요금 로직
 
-Vancouver 주차 미터는 **시간대와 요일에 따라 다른 요금**이 적용됩니다.
+## 기준 로직
 
-## 📅 요일별 구분
+시간 기반 요금 계산은 [lib/utils.ts](/Users/hoya/Project/AI/street_parking_price/lib/utils.ts)의 `getRateByDayAndHour()`를 중심으로 동작합니다.
 
-### 1. 평일 (월요일 - 금요일)
-
-- 가장 일반적인 요금대
-- 출퇴근 시간대와 일반 시간대로 구분
-
-### 2. 토요일
-
-- 주말 요금 적용
-- 평일보다 저렴하거나 비슷한 경우가 많음
-
-### 3. 일요일
-
-- 주말 요금 적용
-- 평일보다 저렴하거나 비슷한 경우가 많음
-
-## 🕐 시간대별 구분
-
-### 오전 시간대 (9:00 AM - 6:00 PM)
-
-- **평일**: `r_mf_9a_6p` 요금 적용
-- **토요일**: `r_sa_9a_6p` 요금 적용
-- **일요일**: `r_su_9a_6p` 요금 적용
-
-### 저녁 시간대 (6:00 PM - 10:00 PM)
-
-- **평일**: `r_mf_6p_10` 요금 적용
-- **토요일**: `r_sa_6p_10` 요금 적용
-- **일요일**: `r_su_6p_10` 요금 적용
-
-### 미운영 시간 (10:00 PM - 9:00 AM)
-
-- 주차 미터 미운영
-- 무료 주차 또는 제한 없음 (지역별 규정 확인 필요)
-
-## 💰 요금 예시
-
-### Downtown 지역 예시
-
-| 시간/요일 | 평일  | 토요일 | 일요일 |
-| --------- | ----- | ------ | ------ |
-| 9am-6pm   | $3.50 | $3.50  | $3.50  |
-| 6pm-10pm  | $4.00 | $4.00  | $4.00  |
-| 10pm-9am  | N/A   | N/A    | N/A    |
-
-### Kitsilano 지역 예시
-
-| 시간/요일 | 평일  | 토요일 | 일요일 |
-| --------- | ----- | ------ | ------ |
-| 9am-6pm   | $2.50 | $2.50  | $2.50  |
-| 6pm-10pm  | $2.00 | $2.00  | $2.00  |
-| 10pm-9am  | N/A   | N/A    | N/A    |
-
-## 🎯 앱에서 구현된 기능
-
-### 1. 자동 현재 요금 표시
-
-```typescript
-// lib/utils.ts
-export const getCurrentRate = (meter: ParkingMeter): string => {
-  const now = new Date();
-  const day = now.getDay(); // 0: 일요일, 1-5: 평일, 6: 토요일
-  const hour = now.getHours();
-
-  // 시간대 판단
-  const isMorning = hour >= 9 && hour < 18;
-  const isEvening = hour >= 18 && hour < 22;
-
-  // 요일과 시간대에 따른 요금 반환
-  if (day === 0) return isMorning ? meter.r_su_9a_6p : meter.r_su_6p_10;
-  if (day === 6) return isMorning ? meter.r_sa_9a_6p : meter.r_sa_6p_10;
-  return isMorning ? meter.r_mf_9a_6p : meter.r_mf_6p_10;
-};
+```ts
+const isMorning = hour >= 9 && hour < 18;
+const isEvening = hour >= 18 && hour < 22;
 ```
 
-### 2. 실시간 "현재 요금" 하이라이트
+적용 규칙:
 
-리스트에서 각 주차장 카드를 클릭하면:
+- 일요일: `r_su_*`
+- 토요일: `r_sa_*`
+- 그 외: `r_mf_*`
+- 오전 외 저녁 외 시간대는 `"N/A"`
 
-- ✅ 현재 적용되는 시간대가 **초록색으로 하이라이트**
-- 📋 모든 시간대/요일별 요금을 **한눈에 비교**
-- ⏰ 미운영 시간에는 **빨간색 경고** 표시
+## 현재 시간대 구분
 
-### 3. 시간대별 상세 정보 컴포넌트
+- 09:00 ~ 17:59: 오전 요금
+- 18:00 ~ 21:59: 저녁 요금
+- 22:00 ~ 08:59: `"N/A"`
 
-`TimeRateInfo` 컴포넌트가 제공하는 정보:
+## 실제 UI 반영 위치
 
-- 평일 오전 (9am-6pm) 요금
-- 평일 저녁 (6pm-10pm) 요금
-- 토요일 오전/저녁 요금
-- 일요일 오전/저녁 요금
-- 각 시간대의 주차 시간 제한
-- 현재 적용 중인 요금 강조 표시
+### 리스트 카드
 
-## 📊 요금 계산 예시
+- [components/ParkingList.tsx](/Users/hoya/Project/AI/street_parking_price/components/ParkingList.tsx)
+- 카드 상단의 큰 가격 텍스트는 `selectedDay`, `selectedHour` 기준
 
-### 시나리오 1: 평일 오전 10시에 2시간 주차
+### 상세 요금표
 
-- **지역**: Downtown
-- **시간**: 평일 10:00 AM (오전 시간대)
-- **요금**: $3.50/시간
-- **시간 제한**: 2시간
-- **총 비용**: $7.00
+- [components/TimeRateInfo.tsx](/Users/hoya/Project/AI/street_parking_price/components/TimeRateInfo.tsx)
+- 현재 로컬 코드 기준으로 `selectedDay`, `selectedHour` props를 받을 수 있음
+- 해당 시간대는 초록색 강조와 "현재" 배지로 표시
 
-### 시나리오 2: 토요일 저녁 7시에 3시간 주차
+### 지도 마커
 
-- **지역**: Kitsilano
-- **시간**: 토요일 7:00 PM (저녁 시간대)
-- **요금**: $2.00/시간
-- **시간 제한**: 4시간
-- **총 비용**: $6.00
+- [components/ParkingMap.tsx](/Users/hoya/Project/AI/street_parking_price/components/ParkingMap.tsx)
+- 가격 마커 라벨은 선택된 요일/시간 기준 요금을 사용
 
-### 시나리오 3: 일요일 밤 11시 (미운영)
+## 현재 구현과 문서에서 주의할 점
 
-- **지역**: 모든 지역
-- **시간**: 일요일 11:00 PM
-- **요금**: 미운영 (N/A)
-- **총 비용**: 무료 (단, 지역별 규정 확인 필요)
+### 가격 정렬
 
-## 🎨 UI/UX 특징
+[lib/utils.ts](/Users/hoya/Project/AI/street_parking_price/lib/utils.ts)의 `sortParkingMeters()`는 `selectedDay`, `selectedHour`가 전달되면 선택된 요일/시간 기준으로 가격을 정렬합니다.
 
-### 카드 뷰
+현재 기준:
 
-- **현재 요금**: 큰 파란색 숫자로 강조
-- **클릭 안내**: "👆 클릭하여 시간대별 요금 상세 보기"
-- **확장 뷰**: 모든 시간대 요금을 색상으로 구분
+- 가격 필터: 사용자가 선택한 요일/시간 기준
+- 리스트/지도 마커: 사용자가 선택한 요일/시간 기준
+- 가격 정렬: 사용자가 선택한 요일/시간 기준
 
-### 색상 코딩
+선택 시간이 전달되지 않는 호출에서는 실제 현재 시각 기준 요금을 fallback으로 사용합니다.
 
-- 🟢 **초록색**: 현재 적용 중인 시간대
-- ⚪ **흰색**: 다른 시간대
-- 🔴 **빨간색**: 미운영 시간 경고
+### 지도 팝업 요금
 
-### 애니메이션
+[components/ParkingMap.tsx](/Users/hoya/Project/AI/street_parking_price/components/ParkingMap.tsx) 팝업의 요금도 지도 마커와 같은 그룹 rate 값을 사용하므로 선택된 요일/시간 기준과 일치합니다.
 
-- "현재" 배지에 pulse 애니메이션
-- 카드 확장/축소 시 부드러운 전환
+## 시간 제한 표시
 
-## 💡 사용자를 위한 팁
+상세 요금표는 각 시간대별 시간 제한도 함께 보여줍니다.
 
-### 1. 저렴한 시간대 찾기
+예:
 
-- 일반적으로 **저녁 시간대가 더 저렴**
-- **주말이 평일보다 저렴한 경우** 많음
-- 필터에서 "가격 낮은 순"으로 정렬
+- `t_mf_9a_6p`
+- `t_mf_6p_10`
+- `t_sa_9a_6p`
+- `t_sa_6p_10`
+- `t_su_9a_6p`
+- `t_su_6p_10`
 
-### 2. 시간 제한 확인
+## 운영 시간 표시
 
-- 각 시간대마다 주차 시간 제한이 다름
-- Downtown: 2-3시간
-- 외곽 지역: 4-10시간
+전체 운영 시간은 `timeineffe`에서 가져오고, UI에서는 보통 `9:00 AM TO 10:00 PM` 같은 구간만 추출해서 보여줍니다.
 
-### 3. 미운영 시간 활용
+## 관련 파일
 
-- 밤 10시 이후는 미터 미운영
-- **단, 지역별 야간 주차 규정 확인 필수**
-- 일부 지역은 야간에도 제한이 있을 수 있음
-
-## 🔄 데이터 업데이트
-
-시간/요일별 요금 정보는:
-
-- Vancouver Open Data Portal에서 주간 업데이트
-- `npm run update-data`로 최신 데이터 다운로드
-- 요금 변경 시 자동 반영
-
-## 📱 모바일 최적화
-
-모바일에서는:
-
-- 터치로 카드 확장/축소
-- 스와이프로 빠른 탐색
-- 세로 모드에 최적화된 레이아웃
-
-## 🚀 향후 개선 사항
-
-- [ ] 특정 시간대의 요금 비교 기능
-- [ ] 시간대별 가격 그래프
-- [ ] "최저 요금 시간대" 알림
-- [ ] 주차 비용 계산기
-- [ ] 요금 트렌드 분석
-
----
-
-**이 시스템으로 사용자는 언제 어디서든 정확한 주차 요금을 확인하고 최적의 주차 위치를 찾을 수 있습니다!** 🎉
+- [lib/utils.ts](/Users/hoya/Project/AI/street_parking_price/lib/utils.ts)
+- [components/ParkingList.tsx](/Users/hoya/Project/AI/street_parking_price/components/ParkingList.tsx)
+- [components/TimeRateInfo.tsx](/Users/hoya/Project/AI/street_parking_price/components/TimeRateInfo.tsx)
+- [components/ParkingMap.tsx](/Users/hoya/Project/AI/street_parking_price/components/ParkingMap.tsx)

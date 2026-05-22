@@ -1,164 +1,87 @@
 # 기여 가이드
 
-Vancouver Street Parking Price Finder 프로젝트에 기여해주셔서 감사합니다!
-
-## 개발 환경 설정
-
-### 1. 저장소 포크 및 클론
+## 시작하기
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/street_parking_price.git
+git clone <repo-url>
 cd street_parking_price
-```
-
-### 2. 의존성 설치
-
-```bash
 npm install
+npm run dev
 ```
 
-### 3. 데이터 다운로드
+필요하면 최신 데이터도 다시 받아옵니다.
 
 ```bash
 npm run update-data
 ```
 
-### 4. 개발 서버 실행
+## 작업 전 확인
+
+변경 전후로 아래 명령을 우선 확인하는 것을 권장합니다.
 
 ```bash
-npm run dev
+npm run lint
+npm run build
 ```
 
-브라우저에서 [http://localhost:3000](http://localhost:3000)을 열어 확인하세요.
+현재 기준으로 lint는 오류 없이 통과합니다.
 
-## 코드 스타일
+## 코드 작성 기준
 
 ### TypeScript
 
-- 타입을 명시적으로 선언하세요
-- `any` 타입 사용을 피하세요
-- 인터페이스와 타입을 적절히 활용하세요
-
-### 변수명
-
-- 이해하기 쉬운 의미있는 이름 사용
-- camelCase 사용 (함수, 변수)
-- PascalCase 사용 (컴포넌트, 타입, 인터페이스)
-
-### 주석
-
-- 일본어로 작성 (프로젝트 규칙)
-- 복잡한 로직에는 설명 주석 추가
-- JSDoc 스타일 함수 주석 권장
-
-예시:
-
-```typescript
-/**
- * 二つの地点間の距離を計算
- * @param lat1 - 緯度1
- * @param lon1 - 経度1
- * @param lat2 - 緯度2
- * @param lon2 - 経度2
- * @returns 距離 (km)
- */
-export const calculateDistance = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number => {
-  // Implementation
-};
-```
+- 타입을 명확히 유지합니다.
+- `any` 사용은 가능한 한 피합니다.
+- props와 데이터 구조는 명시적 타입을 둡니다.
 
 ### 컴포넌트
 
-- 하나의 파일에 하나의 컴포넌트
-- Props 타입을 인터페이스로 정의
-- `'use client'` 지시자를 적절히 사용
+- 컴포넌트 단위로 책임을 나눕니다.
+- 클라이언트 컴포넌트가 필요한 경우에만 `"use client"`를 둡니다.
+- 지도 관련 로직은 SSR 이슈를 고려합니다.
 
-## Pull Request 프로세스
+### 스타일
 
-### 1. 이슈 확인 또는 생성
+- 현재 프로젝트는 Tailwind CSS 4를 사용합니다.
+- Leaflet 관련 스타일은 [app/globals.css](/Users/hoya/Project/AI/street_parking_price/app/globals.css)에 있습니다.
 
-- 기존 이슈를 확인하세요
-- 없다면 새 이슈를 만들어 논의하세요
+### 주석과 문서
 
-### 2. 브랜치 생성
+- 기존 코드에는 한국어와 일본어 주석이 섞여 있습니다.
+- 새 주석은 짧고 실제로 필요한 설명만 추가하는 편이 낫습니다.
+- 동작이 바뀌면 관련 문서도 함께 갱신합니다.
 
-```bash
-git checkout -b feature/your-feature-name
-# 또는
-git checkout -b fix/your-bug-fix
-```
+## 브랜치와 커밋
 
-### 3. 변경사항 커밋
+브랜치는 작업 의도가 드러나게 만듭니다.
 
-```bash
-git add .
-git commit -m "✨ Add feature: your feature description"
-```
+예:
 
-커밋 메시지 컨벤션:
+- `feature/address-search-improvements`
+- `fix/mobile-sort-menu`
+- `docs/update-project-docs`
 
-- `✨ feat:` - 새로운 기능
-- `🐛 fix:` - 버그 수정
-- `📝 docs:` - 문서 변경
-- `💄 style:` - 코드 포맷팅
-- `♻️ refactor:` - 리팩토링
-- `✅ test:` - 테스트 추가
-- `⚡ perf:` - 성능 개선
+커밋 메시지는 한 줄로도 충분하지만 변경 목적이 분명해야 합니다.
 
-### 4. 푸시 및 PR 생성
+예:
 
-```bash
-git push origin feature/your-feature-name
-```
+- `feat: improve mobile search flow`
+- `fix: align time-based sorting behavior`
+- `docs: refresh project documentation`
 
-GitHub에서 Pull Request를 생성하세요.
+## Pull Request 체크리스트
 
-## 기여 아이디어
+- 변경 목적이 설명되어 있는가
+- UI 변경이면 영향 범위를 설명했는가
+- `npm run lint` 결과를 확인했는가
+- `npm run build` 결과를 확인했는가
+- 문서가 낡아지지 않았는가
 
-### 기능 개선
+## 이 프로젝트에서 특히 주의할 점
 
-- [ ] 다국어 지원 (영어, 한국어, 일본어)
-- [ ] 즐겨찾기 기능
-- [ ] 주차 가능 여부 실시간 확인
-- [ ] 경로 안내 기능
-- [ ] PWA (Progressive Web App) 지원
-- [ ] 다크 모드
+- 가격 필터와 가격 정렬의 기준 시간이 현재 완전히 일치하지 않습니다.
+- 모바일 정렬 메뉴는 데스크톱 필터와 구현이 완전히 동일하지 않습니다.
+- 지도 마커 텍스트와 팝업 텍스트의 요금 기준이 다를 수 있습니다.
+- `AdBanner` 컴포넌트는 존재하지만 현재 메인 화면에서 사용되지 않습니다.
 
-### UI/UX 개선
-
-- [ ] 더 나은 모바일 UI
-- [ ] 애니메이션 추가
-- [ ] 접근성 개선
-- [ ] 로딩 상태 개선
-
-### 성능 최적화
-
-- [ ] 데이터 압축
-- [ ] 가상 스크롤링
-- [ ] 이미지 최적화
-- [ ] 코드 스플리팅
-
-### 백엔드 기능
-
-- [ ] 사용자 인증
-- [ ] 리뷰 시스템
-- [ ] 북마크 동기화
-- [ ] API 서버
-
-## 질문이나 제안
-
-- GitHub Issues를 통해 질문하세요
-- 아이디어나 제안도 환영합니다!
-
-## 행동 강령
-
-- 존중하는 태도로 소통하세요
-- 건설적인 피드백을 제공하세요
-- 다양성을 존중하세요
-
-감사합니다! 🙏
+이 영역을 수정할 때는 관련 문서와 동작을 함께 맞추는 것이 좋습니다.

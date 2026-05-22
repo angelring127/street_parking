@@ -87,21 +87,30 @@ const toRad = (degrees: number): number => {
 export const sortParkingMeters = (
   meters: ParkingMeter[],
   sortOption: SortOption,
-  userLocation?: { lat: number; lon: number }
+  userLocation?: { lat: number; lon: number },
+  selectedDay?: number,
+  selectedHour?: number
 ): ParkingMeter[] => {
   const sorted = [...meters];
+  const getSortRate = (meter: ParkingMeter) => {
+    if (selectedDay !== undefined && selectedHour !== undefined) {
+      return getRateByDayAndHour(meter, selectedDay, selectedHour);
+    }
+
+    return getCurrentRate(meter);
+  };
 
   switch (sortOption) {
     case "price-asc":
       return sorted.sort((a, b) => {
-        const priceA = parsePrice(getCurrentRate(a));
-        const priceB = parsePrice(getCurrentRate(b));
+        const priceA = parsePrice(getSortRate(a));
+        const priceB = parsePrice(getSortRate(b));
         return priceA - priceB;
       });
     case "price-desc":
       return sorted.sort((a, b) => {
-        const priceA = parsePrice(getCurrentRate(a));
-        const priceB = parsePrice(getCurrentRate(b));
+        const priceA = parsePrice(getSortRate(a));
+        const priceB = parsePrice(getSortRate(b));
         return priceB - priceA;
       });
     case "distance":
